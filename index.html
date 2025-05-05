@@ -3,7 +3,7 @@
 <head>
     <meta charset="utf-8"/>
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>屈臣氏效期檢查表處理工具 (優化版)</title>
+    <title>屈臣氏效期檢查表處理工具 (優化版 v3)</title>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/tabulator-tables/5.5.0/css/tabulator_bootstrap5.min.css" rel="stylesheet">
@@ -14,17 +14,25 @@
         /* 基本樣式 (Tailwind 已提供大部分) */
         body {
             font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            overscroll-behavior-y: none; /* 防止下拉刷新頁面 */
         }
         /* Tabulator 的一些微調 */
         .tabulator {
             border-radius: 0.375rem; /* rounded-md */
             overflow: hidden;
             border: 1px solid #e5e7eb; /* border-gray-200 */
+            /* 設定最大高度，防止在大螢幕上過高 */
+            max-height: 75vh;
+             /* 讓表格本身可以滾動 */
+            overflow-y: auto;
         }
         .tabulator .tabulator-header {
             background-color: #f9fafb; /* bg-gray-50 */
             border-bottom: 1px solid #e5e7eb; /* border-gray-200 */
             font-weight: 600; /* font-semibold */
+            position: sticky; /* 固定表頭 */
+            top: 0;
+            z-index: 10;
         }
         .tabulator .tabulator-row {
             border-bottom: 1px solid #f3f4f6; /* border-gray-100 */
@@ -33,11 +41,20 @@
             background-color: #f9fafb; /* hover:bg-gray-50 */
         }
         .tabulator-col-title {
-             padding: 0.75rem 1rem; /* px-4 py-3 */
+             padding: 0.5rem 0.5rem; /* 減少內邊距 py-2 px-2 */
+             text-align: center; /* 標題居中 */
         }
         .tabulator-cell {
-            padding: 0.75rem 1rem; /* px-4 py-3 */
+            padding: 0.5rem 0.5rem; /* 減少內邊距 py-2 px-2 */
             border-right: none;
+            white-space: nowrap; /* 防止單元格內容換行 */
+            overflow: hidden;
+            text-overflow: ellipsis; /* 超出顯示省略號 */
+        }
+         /* 針對品名列允許稍寬 */
+        .tabulator-cell[tabulator-field="name"] {
+            white-space: normal; /* 允許品名換行 */
+            min-width: 120px; /* 給品名一個最小寬度 */
         }
         .tabulator-group-header {
             background-color: #eef2ff; /* bg-indigo-100 */
@@ -45,6 +62,36 @@
             font-weight: 600;
             padding: 0.5rem 1rem;
             border-bottom: 1px solid #c7d2fe; /* border-indigo-300 */
+            position: sticky; /* 固定分組標頭 */
+            top: 38px; /* 假設表頭高度約 38px */
+            z-index: 9;
+        }
+         /* 分頁器樣式 */
+        .tabulator .tabulator-footer {
+            background-color: #f9fafb;
+            padding: 0.5rem;
+            border-top: 1px solid #e5e7eb;
+            position: sticky; /* 固定分頁器 */
+            bottom: 0;
+            z-index: 10;
+        }
+        .tabulator .tabulator-paginator label {
+            font-weight: normal;
+            font-size: 0.875rem; /* text-sm */
+        }
+        .tabulator .tabulator-page {
+            margin: 0 2px;
+            padding: 4px 8px;
+            border-radius: 0.25rem; /* rounded */
+            font-size: 0.875rem;
+        }
+        .tabulator .tabulator-page.active {
+            background-color: #3b82f6; /* bg-blue-500 */
+            color: white;
+        }
+        .tabulator .tabulator-page[disabled] {
+            opacity: 0.5;
+            cursor: not-allowed;
         }
 
         /* 自定義標記樣式 */
@@ -64,30 +111,47 @@
         .mark-no:hover { background-color: #dc2626; } /* hover:bg-red-600 */
 
         /* 臨近效期樣式 */
-        .expiry-danger {
-            color: #dc2626; /* text-red-600 */
-            font-weight: 700; /* font-bold */
-        }
-        .expiry-warning {
-            color: #f59e0b; /* text-amber-500 */
-            font-weight: 600; /* font-semibold */
-        }
+        .expiry-danger { color: #dc2626; font-weight: 700; }
+        .expiry-warning { color: #f59e0b; font-weight: 600; }
 
         /* 拖放區域 */
-        .uploader-area.highlight {
-            border-color: #3b82f6; /* border-blue-500 */
-            background-color: #eff6ff; /* bg-blue-50 */
-        }
+        .uploader-area.highlight { border-color: #3b82f6; background-color: #eff6ff; }
 
         /* 調試面板 */
-        .debug-info {
-            font-family: monospace;
-            white-space: pre-wrap;
-            word-wrap: break-word;
-        }
+        .debug-info { font-family: monospace; white-space: pre-wrap; word-wrap: break-word; }
 
         /* 隱藏元素 */
         .hidden { display: none; }
+
+        /* 按鈕樣式 */
+        .filter-btn {
+             background-color: #e5e7eb; /* bg-gray-200 */
+             color: #374151; /* text-gray-700 */
+             font-weight: 600; /* font-semibold */
+             padding: 0.25rem 0.75rem; /* py-1 px-3 */
+             border-radius: 0.375rem; /* rounded-md */
+             font-size: 0.875rem; /* text-sm */
+             transition: background-color 0.15s ease-in-out, color 0.15s ease-in-out;
+             border: 1px solid transparent;
+        }
+        .filter-btn:hover {
+            background-color: #d1d5db; /* hover:bg-gray-300 */
+        }
+        .filter-btn.active {
+            background-color: #3b82f6; /* bg-blue-500 */
+            color: white;
+            border-color: #2563eb; /* border-blue-600 */
+        }
+        .filter-btn.active:hover {
+             background-color: #2563eb; /* hover:bg-blue-600 */
+        }
+        .action-btn {
+             font-weight: 600; /* font-semibold */
+             padding: 0.25rem 0.75rem; /* py-1 px-3 */
+             border-radius: 0.375rem; /* rounded-md */
+             font-size: 0.875rem; /* text-sm */
+             transition: background-color 0.15s ease-in-out;
+        }
     </style>
     <script>
       tailwind.config = {
@@ -101,62 +165,67 @@
       }
     </script>
 </head>
-<body class="bg-gray-100 text-gray-800 p-4 md:p-8">
-    <div class="container mx-auto max-w-7xl space-y-6">
-        <header class="bg-gradient-to-r from-blue-500 to-indigo-600 text-white p-6 rounded-lg shadow-md text-center">
-            <h1 class="text-2xl md:text-3xl font-bold">屈臣氏效期檢查表處理工具 (優化版)</h1>
+<body class="bg-gray-100 text-gray-800 p-2 md:p-4">
+    <div class="container mx-auto max-w-7xl space-y-4">
+        <header class="bg-gradient-to-r from-blue-500 to-indigo-600 text-white p-4 rounded-lg shadow-md text-center">
+            <h1 class="text-xl md:text-2xl font-bold">屈臣氏效期檢查表處理</h1>
         </header>
 
-        <div id="error-message" class="hidden bg-red-100 border-l-4 border-red-500 text-red-700 p-4 rounded-md shadow" role="alert">
+        <div id="error-message" class="hidden bg-red-100 border-l-4 border-red-500 text-red-700 p-3 rounded-md shadow" role="alert">
             <p class="font-bold">發生錯誤</p>
-            <p id="error-text">錯誤詳情將顯示在這裡</p>
+            <p id="error-text" class="text-sm">錯誤詳情將顯示在這裡</p>
         </div>
 
-        <div class="card bg-white p-6 rounded-lg shadow-md">
-            <div class="uploader-area border-2 border-dashed border-gray-300 rounded-lg p-6 text-center transition-colors duration-200" id="uploader-area">
-                <input type="file" id="uploader" accept=".xls,.xlsx,.csv" class="hidden">
-                <button onclick="document.getElementById('uploader').click()" class="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-md transition duration-150 ease-in-out mb-3">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 inline-block mr-2" viewBox="0 0 20 20" fill="currentColor">
-                      <path fill-rule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM6.293 6.707a1 1 0 010-1.414l3-3a1 1 0 011.414 0l3 3a1 1 0 01-1.414 1.414L11 5.414V13a1 1 0 11-2 0V5.414L7.707 6.707a1 1 0 01-1.414 0z" clip-rule="evenodd" />
-                    </svg>
-                    選擇檔案
-                </button>
-                <p class="text-gray-500 text-sm mb-3">或將檔案拖放至此處</p>
-                <button id="load-sample" class="bg-yellow-500 hover:bg-yellow-600 text-white font-bold py-2 px-4 rounded-md transition duration-150 ease-in-out">
-                    載入範例數據
-                </button>
-                <div class="file-info mt-4 text-sm text-gray-600" id="file-info"></div>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div class="card bg-white p-4 rounded-lg shadow-md">
+                <div class="uploader-area border-2 border-dashed border-gray-300 rounded-lg p-4 text-center transition-colors duration-200 h-full flex flex-col justify-center" id="uploader-area">
+                    <input type="file" id="uploader" accept=".xls,.xlsx,.csv" class="hidden">
+                    <button onclick="document.getElementById('uploader').click()" class="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-md transition duration-150 ease-in-out mb-2 text-sm">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 inline-block mr-1" viewBox="0 0 20 20" fill="currentColor">
+                          <path fill-rule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM6.293 6.707a1 1 0 010-1.414l3-3a1 1 0 011.414 0l3 3a1 1 0 01-1.414 1.414L11 5.414V13a1 1 0 11-2 0V5.414L7.707 6.707a1 1 0 01-1.414 0z" clip-rule="evenodd" />
+                        </svg>
+                        選擇檔案
+                    </button>
+                    <p class="text-gray-500 text-xs mb-2">或將檔案拖放至此處</p>
+                    <button id="load-sample" class="bg-yellow-500 hover:bg-yellow-600 text-white font-bold py-1.5 px-3 rounded-md transition duration-150 ease-in-out text-sm">
+                        載入範例
+                    </button>
+                    <div class="file-info mt-3 text-xs text-gray-600" id="file-info"></div>
+                </div>
+            </div>
+            <div id="file-info-display" class="card bg-blue-50 border-l-4 border-blue-400 p-3 rounded-md shadow hidden">
+                <h3 class="text-base font-semibold text-blue-800 mb-1">文件資訊</h3>
+                <div id="file-details" class="text-xs text-blue-700 space-y-0.5"></div>
+                 <details class="mt-2">
+                    <summary class="cursor-pointer text-xs font-semibold text-gray-600 hover:text-gray-800">顯示/隱藏處理日誌</summary>
+                    <div id="debug-panel" class="debug-info mt-1 text-xs bg-white p-2 border border-gray-200 rounded max-h-24 overflow-y-auto"></div>
+                 </details>
             </div>
         </div>
 
-        <div id="file-info-display" class="card bg-blue-50 border-l-4 border-blue-400 p-4 rounded-md shadow hidden">
-            <h3 class="text-lg font-semibold text-blue-800 mb-2">文件資訊</h3>
-            <div id="file-details" class="text-sm text-blue-700 space-y-1"></div>
-        </div>
-
-        <div class="card bg-gray-50 p-4 rounded-lg shadow-md hidden" id="debug-container">
-            <details>
-                <summary class="cursor-pointer font-semibold text-gray-600 hover:text-gray-800">顯示/隱藏 詳細處理日誌</summary>
-                <div id="debug-panel" class="debug-info mt-2 text-xs bg-white p-3 border border-gray-200 rounded max-h-60 overflow-y-auto"></div>
-            </details>
-        </div>
-
-        <div id="content-area" class="hidden space-y-6">
-            <div class="card bg-white p-6 rounded-lg shadow-md">
-                <div class="actions flex flex-wrap gap-3 mb-4 items-center">
-                    <span class="font-semibold mr-2">排序:</span>
-                    <button id="btn-sort-dept" class="bg-gray-200 hover:bg-gray-300 text-gray-700 font-semibold py-1 px-3 rounded-md text-sm transition duration-150">依部門</button>
-                    <button id="btn-sort-date" class="bg-gray-200 hover:bg-gray-300 text-gray-700 font-semibold py-1 px-3 rounded-md text-sm transition duration-150">依效期</button>
-                    <button id="btn-sort-name" class="bg-gray-200 hover:bg-gray-300 text-gray-700 font-semibold py-1 px-3 rounded-md text-sm transition duration-150">依品名</button>
-                    <div class="flex-grow"></div> <button id="btn-show-marked" class="bg-emerald-500 hover:bg-emerald-600 text-white font-semibold py-1 px-3 rounded-md text-sm transition duration-150">僅顯示已標記</button>
-                    <button id="btn-reset-mark" class="bg-red-500 hover:bg-red-600 text-white font-semibold py-1 px-3 rounded-md text-sm transition duration-150">重置所有標記</button>
-                </div>
-
-                <div class="dept-filter" id="dept-filter">
-                    <strong class="font-semibold mr-2 text-gray-700">部門篩選:</strong>
-                    <div id="dept-buttons" class="inline-flex flex-wrap gap-2 mt-2">
+        <div id="content-area" class="hidden space-y-4">
+            <div class="card bg-white p-4 rounded-lg shadow-md">
+                <div class="mb-3">
+                     <strong class="font-semibold mr-2 text-gray-700 text-sm">篩選:</strong>
+                     <div id="filter-buttons" class="inline-flex flex-wrap gap-2 mt-1">
                         </div>
                 </div>
+                 <div class="actions flex flex-wrap gap-3 items-center">
+                     <div class="ml-auto flex gap-3">
+                         <button id="btn-show-marked" class="action-btn bg-emerald-100 hover:bg-emerald-200 text-emerald-700">
+                             <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 inline-block mr-1" viewBox="0 0 20 20" fill="currentColor">
+                               <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
+                             </svg>
+                             <span id="marked-btn-text">僅顯示已標記</span>
+                         </button>
+                         <button id="btn-reset-mark" class="action-btn bg-red-100 hover:bg-red-200 text-red-700">
+                             <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 inline-block mr-1" viewBox="0 0 20 20" fill="currentColor">
+                               <path fill-rule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 110 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clip-rule="evenodd" />
+                             </svg>
+                             重置標記
+                         </button>
+                     </div>
+                 </div>
             </div>
 
             <div id="table-container" class="bg-white rounded-lg shadow-md overflow-hidden">
@@ -165,24 +234,31 @@
         </div>
 
         <div id="loading" class="hidden text-center py-10">
-            <svg class="animate-spin h-8 w-8 text-blue-500 mx-auto mb-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+            <svg class="animate-spin h-6 w-6 text-blue-500 mx-auto mb-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
               <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
               <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
             </svg>
-            <p class="text-gray-600 font-semibold">處理中，請稍候...</p>
+            <p class="text-gray-600 font-semibold text-sm">處理中...</p>
         </div>
     </div>
 
     <script>
         // --- 全局變量 ---
-        let rawData = []; // 儲存從 Excel 讀取的原始 JSON 數據
-        let processedData = []; // 儲存標準化和處理後的數據
-        let fileMetadata = {}; // 儲存文件元數據 (標題, 週別, 時間)
-        let table = null; // Tabulator 表格實例
-        let activeDept = "all"; // 當前選中的部門過濾器
-        const HEADER_SCAN_ROWS = 20; // 掃描多少行來偵測標題
-        const HEADER_KEYWORDS = ['部門', '貨號', '品名', '效期', '庫存', '退貨', '日期']; // 標題行關鍵字
-        const MIN_KEYWORD_MATCH = 3; // 至少匹配多少個關鍵字才認為是標題行
+        let rawData = [];
+        let processedData = [];
+        let fileMetadata = {};
+        let table = null;
+        let currentFilter = { type: 'all', value: 'all' }; // 追蹤當前篩選狀態 {type: 'all'|'dept'|'category'|'marked', value: string | string[]}
+        let filterBeforeMarked = { type: 'all', value: 'all' }; // 儲存標記篩選前的狀態
+        const HEADER_SCAN_ROWS = 20;
+        const HEADER_KEYWORDS = ['部門', '貨號', '品名', '效期', '庫存', '退貨', '日期'];
+        const MIN_KEYWORD_MATCH = 3;
+
+        // --- 區域代碼定義 ---
+        const CATEGORIES = {
+            "零食區": ["28", "29"],
+            "藥師區": ["02", "03", "04", "05", "07"]
+        };
 
         // --- DOM 元素引用 ---
         const uploaderArea = document.getElementById('uploader-area');
@@ -192,41 +268,60 @@
         const fileDetails = document.getElementById('file-details');
         const contentArea = document.getElementById('content-area');
         const loading = document.getElementById('loading');
-        const btnSortDept = document.getElementById('btn-sort-dept');
-        const btnSortDate = document.getElementById('btn-sort-date');
-        const btnSortName = document.getElementById('btn-sort-name');
+        // const btnSortDept = document.getElementById('btn-sort-dept'); // Removed
+        // const btnSortDate = document.getElementById('btn-sort-date'); // Removed
+        // const btnSortName = document.getElementById('btn-sort-name'); // Removed
         const btnShowMarked = document.getElementById('btn-show-marked');
+        const markedBtnText = document.getElementById('marked-btn-text');
         const btnResetMark = document.getElementById('btn-reset-mark');
-        const deptButtons = document.getElementById('dept-buttons');
+        const filterButtonsContainer = document.getElementById('filter-buttons'); // Changed ID
         const loadSample = document.getElementById('load-sample');
         const errorMessage = document.getElementById('error-message');
         const errorText = document.getElementById('error-text');
         const debugPanel = document.getElementById('debug-panel');
-        const debugContainer = document.getElementById('debug-container');
+        // const debugContainer = document.getElementById('debug-container'); // Removed container logic, always show details
 
-        // --- 核心功能 ---
+        // --- Tabulator 本地化設定 ---
+        const tabulatorLocale = {
+            "zh-tw": { // 使用繁體中文代碼
+                "pagination": {
+                    "page_size": "每頁顯示",
+                    "page_title": "顯示頁面",
+                    "first": "最前",      // First Page
+                    "first_title": "第一頁", // First Page title
+                    "last": "最後",       // Last Page
+                    "last_title": "最後一頁",  // Last Page title
+                    "prev": "上頁",       // Previous Page
+                    "prev_title": "上一頁",  // Previous Page title
+                    "next": "下頁",       // Next Page
+                    "next_title": "下一頁",  // Next Page title
+                    "all": "全部",        // Show All
+                    "counter": {
+                        "showing": "顯示",
+                        "of": "中的",
+                        "rows": "行",
+                        "pages": "頁"
+                    }
+                },
+                 "headerFilters":{
+                    "default":"篩選...", //default header filter placeholder text
+                }
+            }
+        };
 
-        /**
-         * 調試日誌記錄
-         * @param {string} message - 要記錄的訊息
-         */
+        // --- 核心功能 (大部分與 v2 相同，僅修改部分) ---
+
         function debug(message) {
             const timestamp = new Date().toLocaleTimeString('zh-TW', { hour12: false });
             const msg = `[${timestamp}] ${message}`;
-            console.log(msg); // 同時輸出到控制台
-
+            console.log(msg);
             if (debugPanel) {
-                debugContainer.classList.remove('hidden'); // 顯示調試面板容器
+                // fileInfoDisplay.classList.remove('hidden'); // 確保文件資訊區可見以顯示日誌
                 debugPanel.textContent += msg + '\n';
-                debugPanel.scrollTop = debugPanel.scrollHeight; // 自動滾動到底部
+                debugPanel.scrollTop = debugPanel.scrollHeight;
             }
         }
 
-        /**
-         * 顯示錯誤訊息橫幅
-         * @param {string} message - 要顯示的錯誤訊息
-         * @param {Error} [error] - 可選的原始錯誤對象
-         */
         function showError(message, error) {
             errorText.textContent = message;
             errorMessage.classList.remove('hidden');
@@ -235,7 +330,6 @@
             if (error) {
                 debug(`詳細錯誤: ${error.stack || error}`);
             }
-            // 清理可能存在的舊表格
             if (table) {
                 table.destroy();
                 table = null;
@@ -243,149 +337,105 @@
             contentArea.classList.add('hidden');
         }
 
-        /**
-         * 隱藏錯誤訊息橫幅
-         */
         function hideError() {
             errorMessage.classList.add('hidden');
         }
 
-        /**
-         * 解析日期字符串或數字為 YYYY/MM/DD 格式
-         * @param {*} dateInput - 日期輸入 (字符串, 數字, 或 Date 對象)
-         * @returns {string|null} - 標準化日期字符串或 null
-         */
         function parseDate(dateInput) {
-            if (!dateInput) return null;
-
+             if (!dateInput) return null;
             let date;
             if (dateInput instanceof Date) {
                 date = dateInput;
-            } else if (typeof dateInput === 'number') {
-                // 嘗試處理 Excel 日期數字 (基於 1900 年)
-                // 注意：Excel 將 1900 年錯誤地視為閏年，需要調整
-                try {
-                    // Excel 日期序列號是從 1 開始，代表 1900-01-01
-                    // JavaScript Date 對象是從 0 開始的毫秒數
-                    // 需要將 Excel 日期序列號轉換為天數，然後計算毫秒數
-                    // (序列號 - 25569) * 86400 * 1000 (25569 是 1970-01-01 的 Excel 序列號)
-                    // 但 xlsx 庫讀取時若指定 cellDates: true 會自動轉換，這裡保留備用邏輯
-                    if (dateInput > 60) { // 處理 Excel 1900 閏年 bug
-                        date = new Date((dateInput - 25569 -1) * 86400 * 1000);
-                    } else {
-                         date = new Date((dateInput - 25569) * 86400 * 1000);
+            } else if (typeof dateInput === 'number' && dateInput > 0) { // Excel 日期數字
+                 try {
+                    // 檢查是否為有效的 Excel 日期數字 (大致範圍)
+                    if (dateInput > 20000 && dateInput < 60000) {
+                         // 使用 XLSX 內建的日期轉換函數，更可靠
+                         date = XLSX.SSF.parse_date_code(dateInput);
+                         // 返回 YYYY/MM/DD 格式
+                         if (date) {
+                            return `${date.y}/${String(date.m).padStart(2, '0')}/${String(date.d).padStart(2, '0')}`;
+                         }
                     }
-                     // 檢查轉換結果是否合理
-                    if (isNaN(date.getTime())) throw new Error("Invalid date number conversion");
+                     // 如果不是有效範圍或轉換失敗，嘗試按字符串處理
+                     date = new Date(String(dateInput));
 
-                } catch (e) {
+                 } catch (e) {
                      debug(`Excel 日期數字轉換失敗: ${dateInput}, 錯誤: ${e.message}`);
-                     return null; // 轉換失敗返回 null
-                }
-
+                     return null;
+                 }
             } else if (typeof dateInput === 'string') {
-                // 嘗試解析多種常見格式 (YYYY/MM/DD, YYYY-MM-DD, MM/DD/YYYY 等)
-                // 移除時間部分
-                const dateStr = dateInput.split(' ')[0];
-                 // 優先匹配 YYYY/MM/DD 或 YYYY-MM-DD
-                let match = dateStr.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})$/);
+                const dateStr = dateInput.split(' ')[0].replace(/-/g, '/'); // 統一分隔符
+                let match = dateStr.match(/^(\d{4})\/(\d{1,2})\/(\d{1,2})$/);
                 if (match) {
                     date = new Date(parseInt(match[1]), parseInt(match[2]) - 1, parseInt(match[3]));
                 } else {
-                    // 嘗試其他格式 (可能有風險，依賴瀏覽器實現)
-                    date = new Date(dateStr);
+                    date = new Date(dateStr); // 嘗試通用解析
                 }
             } else {
-                return null; // 不支持的輸入類型
+                return null;
             }
 
-            // 驗證日期有效性
             if (date && !isNaN(date.getTime())) {
                 const year = date.getFullYear();
-                // 限制年份範圍，避免無效日期
                 if (year < 1980 || year > 2100) return null;
-
                 const month = (date.getMonth() + 1).toString().padStart(2, '0');
                 const day = date.getDate().toString().padStart(2, '0');
                 return `${year}/${month}/${day}`;
             }
-
-            return null; // 無效日期或解析失敗
+            return null;
         }
 
 
-        /**
-         * 處理上傳的文件
-         * @param {File} file - 用戶選擇或拖放的文件
-         */
         function handleFile(file) {
-            hideError(); // 清除舊的錯誤訊息
-            debugContainer.classList.add('hidden'); // 隱藏舊的調試日誌
-            debugPanel.textContent = ''; // 清空調試日誌內容
+            hideError();
+            // debugContainer.classList.add('hidden'); // 不再隱藏
+            debugPanel.textContent = '';
             fileInfo.textContent = `檔案：${file.name}`;
-            loading.classList.remove('hidden'); // 顯示載入動畫
-            contentArea.classList.add('hidden'); // 隱藏內容區域
-            fileInfoDisplay.classList.add('hidden'); // 隱藏文件資訊
+            loading.classList.remove('hidden');
+            contentArea.classList.add('hidden');
+            fileInfoDisplay.classList.add('hidden');
 
             const reader = new FileReader();
-
             reader.onload = function(e) {
                 try {
                     const data = new Uint8Array(e.target.result);
-                    processExcelData(data); // 處理讀取的數據
+                    processExcelData(data);
                 } catch (error) {
                     showError("文件處理時發生意外錯誤", error);
                 }
             };
-
             reader.onerror = function(e) {
                 showError("讀取文件時發生錯誤", e.target.error);
             };
-
-            reader.readAsArrayBuffer(file); // 以 ArrayBuffer 格式讀取文件
+            reader.readAsArrayBuffer(file);
         }
 
-        /**
-         * 處理讀取的 Excel 二進制數據
-         * @param {ArrayBuffer} data - Excel 文件的 ArrayBuffer 數據
-         */
         function processExcelData(data) {
-            try {
+             try {
                 debug("開始解析 Excel 文件...");
-                const workbook = XLSX.read(data, {
-                    type: 'array',
-                    cellDates: true, // 嘗試將日期單元格解析為 JS Date 對象
-                    cellNF: false, // 不保留數字格式字符串
-                    cellStyles: true // 讀取樣式 (可能用於元數據提取)
-                });
+                const workbook = XLSX.read(data, { type: 'array', cellDates: true, cellNF: false, cellStyles: true });
 
                 debug(`工作表數量: ${workbook.SheetNames.length}`);
-                if (workbook.SheetNames.length === 0) {
-                    throw new Error("Excel 文件不包含任何工作表");
-                }
+                if (workbook.SheetNames.length === 0) throw new Error("Excel 文件不包含任何工作表");
 
                 const firstSheetName = workbook.SheetNames[0];
                 debug(`處理第一個工作表: ${firstSheetName}`);
                 const worksheet = workbook.Sheets[firstSheetName];
 
-                // --- 提取文件元數據 (標題, 週別, 時間) ---
+                // --- 提取文件元數據 ---
                 try {
-                    // 嘗試從特定單元格讀取，如果不存在則給予默認值
                     const titleCell = worksheet['C1'] ? worksheet['C1'].v : "未定義";
                     const weekCell = worksheet['B2'] ? worksheet['B2'].v : "未定義";
                     const timeCell = worksheet['F2'] ? worksheet['F2'].v : "未定義";
-
                     fileMetadata = {
                         title: String(titleCell).trim(),
                         week: String(weekCell).trim(),
                         time: String(timeCell).trim()
                     };
-
                     debug(`文件標題: ${fileMetadata.title}`);
                     debug(`週別: ${fileMetadata.week}`);
                     debug(`製表時間: ${fileMetadata.time}`);
-
-                    // 更新文件資訊顯示區域
                     fileDetails.innerHTML = `
                         <p><strong>標題：</strong>${fileMetadata.title || '無法讀取'}</p>
                         <p><strong>${fileMetadata.week || '無法讀取週別'}</strong></p>
@@ -393,84 +443,51 @@
                     `;
                     fileInfoDisplay.classList.remove('hidden');
                 } catch (e) {
-                    debug(`提取文件元數據時發生錯誤: ${e.message}。將繼續處理數據。`);
+                    debug(`提取文件元數據時發生錯誤: ${e.message}。`);
                     fileMetadata = { title: '讀取失敗', week: '讀取失敗', time: '讀取失敗' };
                     fileDetails.innerHTML = `<p>無法完整讀取文件頂部資訊。</p>`;
                     fileInfoDisplay.classList.remove('hidden');
                 }
 
-                // --- 將工作表轉換為數組的數組 (更易於處理) ---
-                const sheetData = XLSX.utils.sheet_to_json(worksheet, {
-                    header: 1, // 輸出為數組的數組
-                    defval: '', // 空單元格的值
-                    blankrows: false // 跳過完全空白的行
-                });
-
-                if (sheetData.length === 0) {
-                    throw new Error("工作表不包含任何數據");
-                }
-                debug(`讀取到 ${sheetData.length} 行原始數據 (包含可能的標題和空行)`);
+                const sheetData = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: '', blankrows: false });
+                if (sheetData.length === 0) throw new Error("工作表不包含任何數據");
+                debug(`讀取到 ${sheetData.length} 行原始數據`);
 
                 // --- 偵測標題行 ---
                 let headerRowIndex = -1;
                 let headers = [];
-                // 優先嘗試第 5 行 (索引為 4)
                 if (sheetData.length > 4 && isLikelyHeader(sheetData[4])) {
                      headerRowIndex = 4;
-                     debug("在第 5 行找到可能的標題行 (基於關鍵字匹配)");
+                     debug("在第 5 行找到標題行");
                 } else {
-                    // 如果第 5 行不是，則掃描前 HEADER_SCAN_ROWS 行
                     debug(`未在第 5 行找到標題，掃描前 ${HEADER_SCAN_ROWS} 行...`);
                     for (let i = 0; i < Math.min(HEADER_SCAN_ROWS, sheetData.length); i++) {
                         if (isLikelyHeader(sheetData[i])) {
                             headerRowIndex = i;
-                            debug(`在第 ${i + 1} 行找到可能的標題行`);
+                            debug(`在第 ${i + 1} 行找到標題行`);
                             break;
                         }
                     }
                 }
-
-                if (headerRowIndex === -1) {
-                    // 如果自動偵測失敗，可以選擇報錯或使用預設值（例如第一行）
-                    // 這裡選擇報錯，因為標題對於後續處理至關重要
-                     debug("警告：無法自動偵測到標題行。將嘗試使用第 5 行作為標題。");
-                     if (sheetData.length > 4) {
-                         headerRowIndex = 4;
-                     } else if (sheetData.length > 0) {
-                         headerRowIndex = 0; // 退而求其次使用第一行
-                         debug("警告：第 5 行不存在，嘗試使用第 1 行作為標題。");
-                     } else {
-                        throw new Error("無法找到任何有效的標題行或數據行");
-                     }
-                }
-
-                headers = sheetData[headerRowIndex].map(h => String(h || '').trim()); // 獲取並清理標題
+                 if (headerRowIndex === -1) {
+                     debug("警告：無法自動偵測到標題行。嘗試使用第 5 行。");
+                     if (sheetData.length > 4) headerRowIndex = 4;
+                     else if (sheetData.length > 0) { headerRowIndex = 0; debug("警告：第 5 行不存在，使用第 1 行。"); }
+                     else throw new Error("無法找到任何有效的標題行或數據行");
+                 }
+                headers = sheetData[headerRowIndex].map(h => String(h || '').trim());
                 debug(`使用的標題行 (第 ${headerRowIndex + 1} 行): ${headers.join(', ')}`);
 
-                // --- 提取數據行 ---
-                // 數據行是指標題行之後的所有非空行
-                const dataRows = sheetData.slice(headerRowIndex + 1).filter(row =>
-                    row && row.some(cell => cell !== null && cell !== undefined && cell !== '')
-                );
-
+                const dataRows = sheetData.slice(headerRowIndex + 1).filter(row => row && row.some(cell => cell !== null && cell !== undefined && cell !== ''));
                 debug(`找到 ${dataRows.length} 行潛在數據行`);
-                if (dataRows.length === 0) {
-                    throw new Error("未在標題行後找到任何數據行");
-                }
+                if (dataRows.length === 0) throw new Error("未在標題行後找到任何數據行");
 
-                // --- 將數據行轉換為對象數組 ---
                 rawData = dataRows.map(row => {
                     const rowObject = {};
-                    headers.forEach((header, index) => {
-                        // 使用清理過的標題作為鍵
-                        if (header) {
-                            rowObject[header] = row[index] !== undefined && row[index] !== null ? row[index] : '';
-                        }
-                    });
+                    headers.forEach((header, index) => { if (header) rowObject[header] = row[index] ?? ''; });
                     return rowObject;
                 });
 
-                // --- 處理和標準化數據 ---
                 processAndNormalizeData();
 
             } catch (error) {
@@ -478,583 +495,453 @@
             }
         }
 
-        /**
-         * 檢查某一行是否可能是標題行
-         * @param {Array} row - 代表一行的數組
-         * @returns {boolean} - 如果行包含足夠多的關鍵字，則返回 true
-         */
         function isLikelyHeader(row) {
-            if (!Array.isArray(row) || row.length === 0) {
-                return false;
-            }
+            if (!Array.isArray(row) || row.length === 0) return false;
             let matchCount = 0;
-            const rowString = row.join(' ').toLowerCase(); // 將整行轉換為小寫字符串以便搜索
+            const rowString = row.join(' ').toLowerCase();
             for (const keyword of HEADER_KEYWORDS) {
-                if (rowString.includes(keyword.toLowerCase())) {
-                    matchCount++;
-                }
+                if (rowString.includes(keyword.toLowerCase())) matchCount++;
             }
-            // console.log("Checking row:", row, "Match count:", matchCount); // 調試用
-            return matchCount >= MIN_KEYWORD_MATCH; // 至少匹配 MIN_KEYWORD_MATCH 個關鍵字
+            return matchCount >= MIN_KEYWORD_MATCH;
         }
 
-
-        /**
-         * 處理和標準化 rawData 中的數據
-         */
         function processAndNormalizeData() {
             try {
-                if (!rawData || rawData.length === 0) {
-                    throw new Error("沒有可供處理的原始數據");
-                }
-
+                if (!rawData || rawData.length === 0) throw new Error("沒有可供處理的原始數據");
                 debug(`開始標準化 ${rawData.length} 行原始數據...`);
-                let processedCount = 0;
-                let errorCount = 0;
+                let processedCount = 0, errorCount = 0;
 
                 processedData = rawData.map((row, index) => {
                     try {
                         const normalized = normalizeRow(row, index);
-                        // 只有包含部門和品名的行才視為有效
                         if (normalized && normalized.dept && normalized.name) {
                              processedCount++;
                              return normalized;
                         } else {
-                             // 記錄缺少關鍵信息的行，但不視為處理錯誤
-                             debug(`第 ${index + 1} 行數據缺少部門或品名，已跳過: ${JSON.stringify(row)}`);
+                             // debug(`第 ${index + 1} 行數據缺少部門或品名，已跳過`);
                              return null;
                         }
                     } catch (error) {
                         errorCount++;
-                        debug(`處理第 ${index + 1} 行數據時出錯: ${error.message}. 原始數據: ${JSON.stringify(row)}`);
-                        return null; // 返回 null 表示此行處理失敗
+                        debug(`處理第 ${index + 1} 行數據時出錯: ${error.message}.`);
+                        return null;
                     }
-                }).filter(row => row !== null); // 過濾掉處理失敗或無效的行
+                }).filter(row => row !== null);
 
                 debug(`標準化完成。有效數據行: ${processedCount}，處理錯誤行: ${errorCount}，跳過行: ${rawData.length - processedCount - errorCount}`);
+                if (processedData.length === 0) throw new Error("數據標準化後沒有有效的數據行。請檢查文件內容和標題行。");
 
-                if (processedData.length === 0) {
-                    throw new Error("數據標準化後沒有有效的數據行。請檢查文件內容和標題行是否正確。");
-                }
-
-                // 更新 UI
                 updateUI();
-
-                loading.classList.add('hidden'); // 隱藏載入動畫
-                contentArea.classList.remove('hidden'); // 顯示內容區域
+                loading.classList.add('hidden');
+                contentArea.classList.remove('hidden');
                 debug("數據處理和 UI 更新完成。");
-
             } catch (error) {
                 showError("數據處理過程中發生錯誤", error);
             }
         }
 
-        /**
-         * 標準化單行數據，將不同名稱的欄位映射到統一的欄位名
-         * @param {object} row - 從 Excel 讀取的原始行對象
-         * @param {number} rowIndex - 行的原始索引 (用於調試)
-         * @returns {object|null} - 標準化後的行對象，如果關鍵字段缺失則返回 null
-         */
         function normalizeRow(row, rowIndex) {
-            // 定義標準欄位名和可能的別名 (包括正則表達式)
-            // 正則表達式用於匹配像 WK9... 這樣的動態標題
-            const fieldMap = {
+            // 欄位映射 (與 v2 相同)
+             const fieldMap = {
                 dept: ['部門', '部門別', '門市部門', '部門代號', '部門名稱'],
                 sku: ['貨號', '商品編號', '品號', '商品貨號'],
                 name: ['品名', '商品名稱', '商品名', '名稱'],
-                // 匹配 "WK" + 數字 + 任意字符 + "最近效期" (忽略大小寫)
                 nearDate: [/WK\d+.*最近效期/i, '最近效期日', '最近效期', '最短效期', '近效期'],
-                // 匹配 "WK" + 數字 + 任意字符 + "最遠效期" (忽略大小寫)
                 farDate: [/WK\d+.*最遠效期/i, '最遠效期日', '最遠效期', '最長效期', '遠效期'],
                 stock: ['庫存量', '庫存', '數量', '庫存數量', '現有數量'],
                 displayCode: ['陳列圖', '陳列圖號', '陳列位置', '陳列編號', '陳列代碼'],
                 returnType: ['退貨型態', '退貨類型', '退貨方式', '退貨狀態'],
-                // 匹配 "WK" + 數字 + ... + "六個月" (忽略大小寫)
                 sixMonthYn: [/WK\d+.*六個月/i, '六個月內', '6M內', '六個月內效期品', '是否.*六個月'],
-                 // 匹配 "WK" + 數字 + ... + "是否已經" 或 "已用盤點機" (忽略大小寫)
                 registeredYn: [/WK\d+.*是否已經/i, /已用盤點機/i, '已.*登記', '登記', '已登記']
             };
 
             const normalizedRow = {
-                id: rowIndex, // 使用原始索引作為唯一 ID
-                dept: '',
-                sku: '',
-                name: '',
-                nearDate: null, // 使用 null 表示日期未找到或無效
-                farDate: null,
-                stock: 0,
-                displayCode: '',
-                returnType: '',
-                sixMonthYn: 'N',
-                registeredYn: 'N',
-                marked: 'N', // 用於用戶標記
-                daysToExpiry: null, // 距離到期天數
-                expiryStatus: null // 效期狀態 (例如 'danger', 'warning')
+                id: rowIndex, dept: '', sku: '', name: '', nearDate: null, farDate: null,
+                stock: 0, displayCode: '', returnType: '', sixMonthYn: 'N', registeredYn: 'N',
+                marked: 'N', daysToExpiry: null, expiryStatus: null
             };
-
             const rowKeys = Object.keys(row);
 
-            // 遍歷標準欄位
             for (const standardField in fieldMap) {
                 const aliases = fieldMap[standardField];
-                let foundValue = undefined;
-                let matchedKey = '';
-
-                // 遍歷該欄位的別名
+                let foundValue = undefined, matchedKey = '';
                 for (const alias of aliases) {
                     let currentMatchKey = null;
                     if (alias instanceof RegExp) {
-                        // 正則匹配
                         currentMatchKey = rowKeys.find(key => alias.test(key.trim()));
                     } else {
-                        // 精確或模糊匹配 (忽略大小寫和空格)
                         const lowerAlias = String(alias).toLowerCase().trim();
                         currentMatchKey = rowKeys.find(key => String(key).toLowerCase().trim() === lowerAlias);
-                         // 如果精確匹配不到，嘗試包含匹配
-                        if (!currentMatchKey) {
-                             currentMatchKey = rowKeys.find(key => String(key).toLowerCase().trim().includes(lowerAlias));
-                        }
+                        if (!currentMatchKey) currentMatchKey = rowKeys.find(key => String(key).toLowerCase().trim().includes(lowerAlias));
                     }
-
                     if (currentMatchKey) {
                         foundValue = row[currentMatchKey];
                         matchedKey = currentMatchKey;
-                        break; // 找到第一個匹配就停止
+                        break;
                     }
                 }
+                // if (rowIndex < 1) debug(`  行 ${rowIndex+1} - 欄位匹配(${standardField}): ${matchedKey || '未找到'} => ${foundValue !== undefined ? JSON.stringify(foundValue) : 'N/A'}`);
 
-                 // 調試輸出匹配結果 (僅針對前幾行)
-                if (rowIndex < 3) {
-                     debug(`  行 ${rowIndex+1} - 欄位匹配(${standardField}): ${matchedKey || '未找到'} => ${foundValue !== undefined ? JSON.stringify(foundValue) : 'N/A'}`);
-                }
-
-                // --- 標準化找到的值 ---
                 if (foundValue !== undefined && foundValue !== null && foundValue !== '') {
                     let value = foundValue;
-                    if (standardField === 'nearDate' || standardField === 'farDate') {
-                        value = parseDate(value); // 使用日期解析函數
-                    } else if (standardField === 'stock') {
-                        value = parseInt(String(value).replace(/[^\d.-]/g, '')) || 0; // 轉換為整數，無效則為 0
-                    } else if (standardField === 'sixMonthYn' || standardField === 'registeredYn') {
+                    if (standardField === 'nearDate' || standardField === 'farDate') value = parseDate(value);
+                    else if (standardField === 'stock') value = parseInt(String(value).replace(/[^\d.-]/g, '')) || 0;
+                    else if (standardField === 'sixMonthYn' || standardField === 'registeredYn') {
                         const upperValue = String(value).toUpperCase();
                         value = (upperValue.includes('Y') || upperValue.includes('是')) ? 'Y' : 'N';
-                    } else {
-                        // 其他欄位轉為字符串並去除首尾空格
-                        value = String(value).trim();
                     }
+                    else value = String(value).trim();
                     normalizedRow[standardField] = value;
                 }
             }
 
-            // --- 後處理和計算 ---
-            // 確保部門是兩位數的字符串
-            if (normalizedRow.dept) {
-                normalizedRow.dept = String(normalizedRow.dept).padStart(2, '0');
-            }
-             // 清理品名多餘空格
-            if (normalizedRow.name) {
-                normalizedRow.name = normalizedRow.name.replace(/\s+/g, ' ');
-            }
+            if (normalizedRow.dept) normalizedRow.dept = String(normalizedRow.dept).padStart(2, '0');
+            if (normalizedRow.name) normalizedRow.name = normalizedRow.name.replace(/\s+/g, ' ');
 
-            // 計算距離到期天數和狀態
             if (normalizedRow.nearDate) {
                 try {
                     const [year, month, day] = normalizedRow.nearDate.split('/').map(Number);
                     const expiryDate = new Date(year, month - 1, day);
-                    const today = new Date();
-                    today.setHours(0, 0, 0, 0); // 將今天時間設為午夜以便比較
-
+                    const today = new Date(); today.setHours(0, 0, 0, 0);
                     if (!isNaN(expiryDate.getTime())) {
                         const diffTime = expiryDate - today;
                         const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
                         normalizedRow.daysToExpiry = diffDays;
-
-                        // 根據天數設置效期狀態
-                        if (diffDays <= 30) {
-                            normalizedRow.expiryStatus = 'danger'; // 30天內危險
-                        } else if (diffDays <= 90) {
-                            normalizedRow.expiryStatus = 'warning'; // 90天內警告
-                        }
-
-                        // 如果計算出的天數小於等於 180 天，強制標記為六個月內
-                        if (diffDays <= 180) {
-                            normalizedRow.sixMonthYn = 'Y';
-                        }
-                    } else {
-                         debug(`行 ${rowIndex+1} - 無效日期對象: ${normalizedRow.nearDate}`);
+                        if (diffDays <= 30) normalizedRow.expiryStatus = 'danger';
+                        else if (diffDays <= 90) normalizedRow.expiryStatus = 'warning';
+                        if (diffDays <= 180) normalizedRow.sixMonthYn = 'Y';
                     }
                 } catch (error) {
-                    debug(`行 ${rowIndex+1} - 計算到期天數時出錯 (${normalizedRow.nearDate}): ${error.message}`);
+                    // debug(`行 ${rowIndex+1} - 計算到期天數時出錯 (${normalizedRow.nearDate}): ${error.message}`);
                 }
             }
 
-            // 如果缺少部門或品名，認為此行無效
-            if (!normalizedRow.dept || !normalizedRow.name) {
-                 // debug(`行 ${rowIndex+1} 標準化後缺少部門或品名，標記為無效。`);
-                 return null;
-            }
-
-
+            if (!normalizedRow.dept || !normalizedRow.name) return null;
             return normalizedRow;
         }
 
-        /**
-         * 更新整體 UI，包括創建表格和按鈕
-         */
         function updateUI() {
             if (!processedData || processedData.length === 0) {
                 debug("沒有處理好的數據可供顯示。");
                 return;
             }
             createTable();
-            createDeptButtons();
+            createFilterButtons(); // Changed function name
             setupButtonEvents();
         }
 
-        /**
-         * 使用 Tabulator 創建數據表格
-         */
         function createTable() {
             if (table) {
-                table.destroy(); // 銷毀舊表格實例
+                table.destroy();
                 table = null;
                 debug("舊表格已銷毀。");
             }
 
-            // Tabulator 列定義
+            // --- 簡化後的列標題 ---
+            const shortColTitles = {
+                marked: "標", dept: "部", sku: "貨號", name: "品名", nearDate: "近效",
+                daysToExpiry: "天", farDate: "遠效", stock: "存", displayCode: "陳列",
+                returnType: "退貨", sixMonthYn: "6M內", registeredYn: "登記"
+            };
+
             const tableColumns = [
-                {
-                    title: "標記",
-                    field: "marked",
-                    width: 80,
-                    headerSort: false, // 不允許對此列排序
-                    hozAlign: "center", // 水平居中
-                    formatter: function(cell) {
-                        const value = cell.getValue();
-                        const id = cell.getRow().getData().id;
-                        const className = value === 'Y' ? 'mark-yes' : 'mark-no';
-                        return `<span class="${className}" data-id="${id}">${value}</span>`;
-                    },
-                    cellClick: function(e, cell) {
-                        // 點擊切換標記狀態
-                        const row = cell.getRow();
-                        const data = row.getData();
-                        data.marked = data.marked === 'Y' ? 'N' : 'Y';
-                        row.update(data); // 更新行數據，會觸發 formatter 重新渲染
-                        debug(`標記切換: ID ${data.id}, 新狀態: ${data.marked}`);
-                    }
-                },
-                { title: "部門", field: "dept", width: 80 },
-                { title: "貨號", field: "sku", width: 100 },
-                { title: "品名", field: "name", minWidth: 250, tooltip: true }, // 增加最小寬度並啟用工具提示
-                {
-                    title: "最近效期",
-                    field: "nearDate",
-                    width: 120,
-                    sorter: "date", // 使用日期排序器
-                    sorterParams: { format: "yyyy/MM/dd" },
-                    formatter: function(cell) {
-                        const value = cell.getValue();
-                        const status = cell.getRow().getData().expiryStatus;
-                        if (status === 'danger') {
-                            return `<span class="expiry-danger">${value || 'N/A'}</span>`;
-                        } else if (status === 'warning') {
-                            return `<span class="expiry-warning">${value || 'N/A'}</span>`;
-                        }
-                        return value || 'N/A'; // 顯示 N/A 如果日期無效
-                    }
-                },
-                {
-                    title: "天數", // 新增顯示剩餘天數
-                    field: "daysToExpiry",
-                    width: 80,
-                    hozAlign: "right",
-                    sorter: "number",
-                     formatter: function(cell) {
-                        const value = cell.getValue();
-                        const status = cell.getRow().getData().expiryStatus;
-                         if (value === null || value === undefined) return 'N/A';
-                         if (status === 'danger') {
-                            return `<span class="expiry-danger">${value}</span>`;
-                        } else if (status === 'warning') {
-                            return `<span class="expiry-warning">${value}</span>`;
-                        }
-                        return value;
-                    }
-                },
-                { title: "最遠效期", field: "farDate", width: 120, sorter: "date", sorterParams: { format: "yyyy/MM/dd" }, formatter: cell => cell.getValue() || 'N/A' },
-                { title: "庫存", field: "stock", width: 80, hozAlign: "right", sorter: "number" },
-                { title: "陳列位置", field: "displayCode", width: 140, tooltip: true },
-                { title: "退貨型態", field: "returnType", minWidth: 120, tooltip: true },
-                {
-                    title: "六個月內",
-                    field: "sixMonthYn",
-                    width: 90,
-                    hozAlign: "center",
-                    formatter: function(cell) {
-                        return cell.getValue() === 'Y'
-                            ? '<span class="font-semibold text-red-600">是</span>'
-                            : '<span class="text-gray-500">否</span>';
-                    }
-                },
-                {
-                    title: "已登記",
-                    field: "registeredYn",
-                    width: 90,
-                    hozAlign: "center",
-                    formatter: function(cell) {
-                        return cell.getValue() === 'Y'
-                            ? '<span class="font-semibold text-emerald-600">是</span>'
-                            : '<span class="font-semibold text-red-600">否</span>';
-                    }
-                }
+                { title: shortColTitles.marked, field: "marked", width: 50, headerSort: false, hozAlign: "center", formatter: cell => `<span class="${cell.getValue() === 'Y' ? 'mark-yes' : 'mark-no'}" data-id="${cell.getRow().getData().id}">${cell.getValue()}</span>`, cellClick: toggleMarkedStatus },
+                { title: shortColTitles.dept, field: "dept", width: 55, hozAlign: "center" }, // 稍寬一點
+                { title: shortColTitles.sku, field: "sku", width: 90 }, // 稍寬一點
+                { title: shortColTitles.name, field: "name", minWidth: 150, tooltip: true, formatter: "plaintext" }, // 允許換行並使用純文本
+                { title: shortColTitles.nearDate, field: "nearDate", width: 95, sorter: "date", sorterParams: { format: "yyyy/MM/dd" }, formatter: expiryDateFormatter },
+                { title: shortColTitles.daysToExpiry, field: "daysToExpiry", width: 60, hozAlign: "right", sorter: "number", formatter: expiryDaysFormatter },
+                // { title: shortColTitles.farDate, field: "farDate", width: 95, sorter: "date", sorterParams: { format: "yyyy/MM/dd" }, formatter: cell => cell.getValue() || '--' }, // 隱藏遠效期
+                { title: shortColTitles.stock, field: "stock", width: 55, hozAlign: "right", sorter: "number" }, // 稍寬一點
+                // { title: shortColTitles.displayCode, field: "displayCode", width: 100, tooltip: true }, // 隱藏陳列
+                // { title: shortColTitles.returnType, field: "returnType", width: 90, tooltip: true }, // 隱藏退貨
+                { title: shortColTitles.sixMonthYn, field: "sixMonthYn", width: 60, hozAlign: "center", formatter: yesNoFormatter }, // 縮短
+                { title: shortColTitles.registeredYn, field: "registeredYn", width: 60, hozAlign: "center", formatter: yesNoFormatter } // 縮短
             ];
+
+            // --- 表格格式化函數 ---
+            function expiryDateFormatter(cell) {
+                const value = cell.getValue();
+                const status = cell.getRow().getData().expiryStatus;
+                if (status === 'danger') return `<span class="expiry-danger">${value || '--'}</span>`;
+                if (status === 'warning') return `<span class="expiry-warning">${value || '--'}</span>`;
+                return value || '--';
+            }
+            function expiryDaysFormatter(cell) {
+                const value = cell.getValue();
+                const status = cell.getRow().getData().expiryStatus;
+                if (value === null || value === undefined) return '--';
+                if (status === 'danger') return `<span class="expiry-danger">${value}</span>`;
+                if (status === 'warning') return `<span class="expiry-warning">${value}</span>`;
+                return value;
+            }
+            function yesNoFormatter(cell) {
+                const value = cell.getValue();
+                if (value === 'Y') return '<span class="font-semibold text-emerald-600">是</span>';
+                if (value === 'N') return '<span class="text-gray-500">否</span>';
+                return '--';
+            }
+            function toggleMarkedStatus(e, cell) {
+                const row = cell.getRow();
+                const data = row.getData();
+                data.marked = data.marked === 'Y' ? 'N' : 'Y';
+                row.update(data);
+                // 如果當前在 "僅顯示已標記" 模式下取消標記，需要從表格中移除該行
+                if (currentFilter.type === 'marked' && data.marked === 'N') {
+                     row.delete(); // 從視圖中刪除，不會影響原始 processedData
+                     debug(`從標記篩選視圖中移除 ID ${data.id}`);
+                } else {
+                    debug(`標記切換: ID ${data.id}, 新狀態: ${data.marked}`);
+                }
+            }
+
 
             try {
                 debug("開始初始化 Tabulator 表格...");
                 table = new Tabulator("#table", {
-                    height: "60vh", // 使用視口高度，使其更具響應性
+                    // height: "70vh", // 增加高度以適應手機
+                    layout: "fitDataFill", // 列寬適應內容，最後一列填充
+                    // layout: "fitColumns", // 可能導致小屏幕擠壓
+                    responsiveLayout: "collapse",
                     data: processedData,
                     columns: tableColumns,
-                    layout: "fitColumns", // 列寬自適應容器
-                    responsiveLayout: "collapse", // 響應式佈局
-                    groupBy: "dept", // 按部門分組
-                    groupHeader: function(value, count, data, group) {
-                        // 自定義分組標頭
-                        return `<span class="font-bold">${value || '未知部門'}</span> <span class="text-sm font-normal text-indigo-600">(${count} 項)</span>`;
-                    },
-                    initialSort: [ // 初始排序
-                        { column: "dept", dir: "asc" },
-                        { column: "daysToExpiry", dir: "asc" } // 優先按剩餘天數排序
-                    ],
-                    placeholder: "沒有數據可顯示", // 無數據時的提示
-                    pagination: "local", // 使用本地分頁
-                    paginationSize: 50, // 每頁顯示 50 條
-                    paginationSizeSelector: [10, 25, 50, 100, true], // 可選的分頁大小
-                    paginationCounter: "rows", // 顯示行數計數器
+                    langs: tabulatorLocale, // 應用本地化
+                    locale: "zh-tw",       // 設置當前語言
+                    groupBy: "dept",
+                    groupHeader: (value, count) => `<span class="font-bold">${value || '?'}</span> <span class="text-sm font-normal text-indigo-600">(${count})</span>`,
+                    initialSort: [ { column: "daysToExpiry", dir: "asc" } ], // 優先按天數排序
+                    placeholder: "沒有數據可顯示",
+                    pagination: "local",
+                    paginationSize: 50, // 預設每頁數量
+                    paginationSizeSelector: [25, 50, 100, true], // 可選大小
+                    paginationCounter: "rows",
                 });
+                // 動態調整高度以填充屏幕
+                adjustTableHeight();
+                window.addEventListener('resize', adjustTableHeight); // 窗口大小改變時重新調整
                  debug("Tabulator 表格初始化成功。");
             } catch (error) {
                  showError("創建表格時發生錯誤", error);
             }
         }
 
-        /**
-         * 創建部門過濾按鈕
-         */
-        function createDeptButtons() {
-            try {
-                const depts = [...new Set(processedData.map(item => item.dept))]
-                                .filter(dept => dept) // 過濾掉空部門
-                                .sort(); // 按字母順序排序
-
-                debug(`找到 ${depts.length} 個有效部門: ${depts.join(', ')}`);
-
-                let buttonsHtml = `<button class="dept-btn active bg-blue-500 text-white font-semibold py-1 px-3 rounded-md text-sm transition duration-150" data-dept="all">全部 (${processedData.length})</button>`;
-
-                depts.forEach(dept => {
-                    const count = processedData.filter(item => item.dept === dept).length;
-                    buttonsHtml += `<button class="dept-btn bg-gray-200 hover:bg-gray-300 text-gray-700 font-semibold py-1 px-3 rounded-md text-sm transition duration-150" data-dept="${dept}">${dept} (${count})</button>`;
-                });
-
-                deptButtons.innerHTML = buttonsHtml;
-
-                // 為按鈕添加事件監聽器 (使用事件委派提高效率)
-                deptButtons.addEventListener('click', function(event) {
-                    if (event.target.classList.contains('dept-btn')) {
-                        const button = event.target;
-                        const dept = button.getAttribute('data-dept');
-
-                        // 更新按鈕樣式
-                        deptButtons.querySelectorAll('.dept-btn').forEach(btn => {
-                            btn.classList.remove('active', 'bg-blue-500', 'text-white');
-                            btn.classList.add('bg-gray-200', 'text-gray-700', 'hover:bg-gray-300');
-                        });
-                        button.classList.add('active', 'bg-blue-500', 'text-white');
-                        button.classList.remove('bg-gray-200', 'text-gray-700', 'hover:bg-gray-300');
-
-
-                        activeDept = dept;
-                        debug(`部門過濾器更改為: ${dept}`);
-
-                        // 應用表格過濾器
-                        if (table) {
-                             if (dept === 'all') {
-                                table.clearFilter(); // 清除所有過濾器
-                                table.clearHeaderFilter(); // 清除表頭過濾器
-                            } else {
-                                table.setFilter("dept", "=", dept); // 設置部門過濾器
-                            }
-                        }
-                    }
-                });
-            } catch (error) {
-                debug(`創建部門按鈕時出錯: ${error.message}`);
-                 // 即使按鈕創建失敗，也應繼續執行
+        /** 動態調整表格高度 */
+        function adjustTableHeight() {
+            if (!table || !contentArea.offsetParent) return; // 如果表格不存在或內容區域不可見，則不調整
+            const container = document.getElementById('table-container');
+            const otherElementsHeight = document.querySelector('header').offsetHeight +
+                                     document.querySelector('.grid').offsetHeight + // 上傳和文件資訊區
+                                     document.querySelector('.card').offsetHeight + // 篩選/操作按鈕區
+                                     (document.querySelector('.tabulator-footer')?.offsetHeight || 50) + // 分頁器高度估計
+                                     60; // 其他邊距和間隔估計值 (px)
+            const availableHeight = window.innerHeight - otherElementsHeight;
+            const tableHeight = Math.max(200, availableHeight); // 最小高度 200px
+            // console.log("Calculated Table Height:", tableHeight);
+            container.style.height = `${tableHeight}px`;
+            if (table) {
+                table.setHeight(tableHeight); // 確保 Tabulator 內部也更新高度
             }
         }
 
-        /**
-         * 為頂部操作按鈕設置事件監聽器
-         */
-        function setupButtonEvents() {
-            if (!table) return; // 如果表格未初始化，則不設置事件
 
-            // 排序按鈕
-            btnSortDept.addEventListener('click', () => { table.setSort("dept", "asc"); debug("按部門排序"); });
-            btnSortDate.addEventListener('click', () => { table.setSort("daysToExpiry", "asc"); debug("按效期天數排序"); });
-            btnSortName.addEventListener('click', () => { table.setSort("name", "asc"); debug("按品名排序"); });
+        /** 創建篩選按鈕 (包括區域和部門) */
+        function createFilterButtons() {
+            try {
+                const depts = [...new Set(processedData.map(item => item.dept))]
+                                .filter(dept => dept)
+                                .sort();
+                debug(`找到 ${depts.length} 個有效部門`);
 
-            // 顯示已標記按鈕
-            btnShowMarked.addEventListener('click', () => {
-                table.setFilter("marked", "=", "Y");
-                debug("篩選顯示已標記項目");
-                // 取消部門按鈕的選中狀態
-                deptButtons.querySelectorAll('.dept-btn').forEach(btn => {
-                    btn.classList.remove('active', 'bg-blue-500', 'text-white');
-                    btn.classList.add('bg-gray-200', 'text-gray-700', 'hover:bg-gray-300');
-                });
+                let buttonsHtml = `<button class="filter-btn active" data-filter-type="all" data-filter-value="all">全部 (${processedData.length})</button>`;
+
+                // 添加區域按鈕
+                for (const categoryName in CATEGORIES) {
+                    const categoryDepts = CATEGORIES[categoryName];
+                    const count = processedData.filter(item => categoryDepts.includes(item.dept)).length;
+                    if (count > 0) { // 只顯示有數據的區域
+                       buttonsHtml += `<button class="filter-btn" data-filter-type="category" data-filter-value="${categoryName}">${categoryName} (${count})</button>`;
+                    }
+                }
+
+                // 添加獨立部門按鈕 (如果需要)
+                // depts.forEach(dept => {
+                //     const count = processedData.filter(item => item.dept === dept).length;
+                //     buttonsHtml += `<button class="filter-btn" data-filter-type="dept" data-filter-value="${dept}">${dept} (${count})</button>`;
+                // });
+
+                filterButtonsContainer.innerHTML = buttonsHtml;
+
+                // 事件委派
+                filterButtonsContainer.addEventListener('click', handleFilterClick);
+
+            } catch (error) {
+                debug(`創建篩選按鈕時出錯: ${error.message}`);
+            }
+        }
+
+        /** 處理篩選按鈕點擊事件 */
+        function handleFilterClick(event) {
+             if (event.target.classList.contains('filter-btn')) {
+                const button = event.target;
+                const filterType = button.getAttribute('data-filter-type');
+                const filterValue = button.getAttribute('data-filter-value');
+
+                applyFilter(filterType, filterValue);
+
+                // 更新按鈕激活狀態
+                updateActiveButton(button);
+            }
+        }
+
+         /** 應用篩選邏輯 */
+        function applyFilter(type, value) {
+             if (!table) return;
+             debug(`應用篩選: 類型=${type}, 值=${value}`);
+             currentFilter = { type, value }; // 更新當前篩選狀態
+
+             // 清除標記按鈕的激活狀態
+             btnShowMarked.classList.remove('active', 'bg-emerald-500', 'text-white');
+             btnShowMarked.classList.add('bg-emerald-100', 'hover:bg-emerald-200', 'text-emerald-700');
+             markedBtnText.textContent = "僅顯示已標記";
+
+
+             table.clearFilter(); // 清除舊篩選
+
+             if (type === 'all') {
+                 // 不做任何篩選
+             } else if (type === 'dept') {
+                 table.setFilter("dept", "=", value);
+             } else if (type === 'category') {
+                 const categoryDepts = CATEGORIES[value];
+                 if (categoryDepts) {
+                     table.setFilter("dept", "in", categoryDepts);
+                 }
+             } else if (type === 'marked') {
+                 table.setFilter("marked", "=", "Y");
+             }
+             table.redraw(true); // 強制重繪表格以應用篩選
+        }
+
+        /** 更新按鈕激活狀態 */
+        function updateActiveButton(activeButton) {
+            filterButtonsContainer.querySelectorAll('.filter-btn').forEach(btn => {
+                btn.classList.remove('active');
             });
+            if (activeButton) {
+                activeButton.classList.add('active');
+            }
+        }
+
+
+        /** 為頂部操作按鈕設置事件監聽器 */
+        function setupButtonEvents() {
+            // 標記篩選按鈕 (切換邏輯)
+            btnShowMarked.addEventListener('click', () => {
+                if (!table) return;
+
+                if (currentFilter.type === 'marked') {
+                    // --- 取消標記篩選，恢復之前的狀態 ---
+                    debug("取消標記篩選，恢復到: " + JSON.stringify(filterBeforeMarked));
+                    applyFilter(filterBeforeMarked.type, filterBeforeMarked.value);
+                    // 恢復對應的篩選按鈕激活狀態
+                    const previousButton = filterButtonsContainer.querySelector(`[data-filter-type="${filterBeforeMarked.type}"][data-filter-value="${filterBeforeMarked.value}"]`);
+                    updateActiveButton(previousButton);
+
+                } else {
+                    // --- 應用標記篩選 ---
+                    // 保存當前篩選狀態
+                    filterBeforeMarked = { ...currentFilter };
+                    debug("應用標記篩選，之前狀態: " + JSON.stringify(filterBeforeMarked));
+                    applyFilter('marked', 'Y');
+                    // 更新按鈕視覺狀態和文字
+                    btnShowMarked.classList.add('active', 'bg-emerald-500', 'text-white');
+                     btnShowMarked.classList.remove('bg-emerald-100', 'hover:bg-emerald-200', 'text-emerald-700');
+                    markedBtnText.textContent = "顯示全部";
+                    // 取消其他篩選按鈕的激活狀態
+                    updateActiveButton(null);
+                }
+            });
+
 
             // 重置標記按鈕
             btnResetMark.addEventListener('click', () => {
+                if (!table || !processedData) return;
                 if (confirm("確定要清除所有標記嗎？此操作無法撤銷。")) {
                     debug("開始重置標記...");
-                    processedData.forEach(item => item.marked = 'N');
-                    table.setData(processedData) // 重新加載數據以更新視圖
-                         .then(() => {
-                             table.clearFilter(); // 清除可能存在的過濾器
-                             debug("所有標記已重置。");
-                             // 重新激活 "全部" 部門按鈕
-                            const allButton = deptButtons.querySelector('[data-dept="all"]');
-                            if(allButton) {
-                                deptButtons.querySelectorAll('.dept-btn').forEach(btn => {
-                                    btn.classList.remove('active', 'bg-blue-500', 'text-white');
-                                    btn.classList.add('bg-gray-200', 'text-gray-700', 'hover:bg-gray-300');
-                                });
-                                allButton.classList.add('active', 'bg-blue-500', 'text-white');
-                                allButton.classList.remove('bg-gray-200', 'text-gray-700', 'hover:bg-gray-300');
-                                activeDept = "all";
-                            }
-                         })
-                         .catch(err => {
-                             showError("重置標記時更新表格數據出錯", err);
-                         });
+                    let changed = false;
+                    processedData.forEach(item => {
+                        if (item.marked === 'Y') {
+                            item.marked = 'N';
+                            changed = true;
+                        }
+                    });
+
+                    if (changed) {
+                        // 如果有標記被更改，則更新表格數據
+                        table.setData(processedData)
+                             .then(() => {
+                                 // 重置後，恢復到 "全部" 篩選狀態
+                                 applyFilter('all', 'all');
+                                 updateActiveButton(filterButtonsContainer.querySelector('[data-filter-type="all"]'));
+                                 debug("所有標記已重置，篩選已恢復為'全部'。");
+                             })
+                             .catch(err => {
+                                 showError("重置標記時更新表格數據出錯", err);
+                             });
+                    } else {
+                         debug("沒有需要重置的標記。");
+                         // 即使沒有標記更改，也確保篩選恢復到'全部'
+                         applyFilter('all', 'all');
+                         updateActiveButton(filterButtonsContainer.querySelector('[data-filter-type="all"]'));
+                    }
                 }
             });
         }
 
         // --- 事件監聽器 ---
-
-        // 文件選擇事件
         uploader.addEventListener('change', e => {
             const file = e.target.files[0];
-            if (file) {
-                handleFile(file);
-            }
-            uploader.value = ''; // 清空選擇，以便可以重新選擇同一個文件
+            if (file) handleFile(file);
+            uploader.value = '';
         });
-
-        // 拖放事件
         ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
             uploaderArea.addEventListener(eventName, preventDefaults, false);
-            document.body.addEventListener(eventName, preventDefaults, false); // 防止瀏覽器默認打開文件
+            document.body.addEventListener(eventName, preventDefaults, false);
         });
-        function preventDefaults(e) {
-            e.preventDefault();
-            e.stopPropagation();
-        }
-        ['dragenter', 'dragover'].forEach(eventName => {
-            uploaderArea.addEventListener(eventName, () => uploaderArea.classList.add('highlight'), false);
-        });
-        ['dragleave', 'drop'].forEach(eventName => {
-            uploaderArea.addEventListener(eventName, () => uploaderArea.classList.remove('highlight'), false);
-        });
-        uploaderArea.addEventListener('drop', e => {
-            const file = e.dataTransfer.files[0];
-            if (file) {
-                handleFile(file);
-            }
-        }, false);
+        function preventDefaults(e) { e.preventDefault(); e.stopPropagation(); }
+        ['dragenter', 'dragover'].forEach(eventName => uploaderArea.addEventListener(eventName, () => uploaderArea.classList.add('highlight'), false));
+        ['dragleave', 'drop'].forEach(eventName => uploaderArea.addEventListener(eventName, () => uploaderArea.classList.remove('highlight'), false));
+        uploaderArea.addEventListener('drop', e => { if (e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]); }, false);
 
         // 加載範例數據事件
         loadSample.addEventListener('click', function() {
             hideError();
-            debugContainer.classList.add('hidden');
             debugPanel.textContent = '';
             debug("開始載入範例數據...");
             loading.classList.remove('hidden');
             contentArea.classList.add('hidden');
 
-            // 模擬文件元數據
-            fileMetadata = {
-                title: "範例效期補查明細",
-                week: "週別：範例",
-                time: `製表時間：${new Date().toLocaleString('zh-TW')}`
-            };
-            fileDetails.innerHTML = `
-                <p><strong>標題：</strong>${fileMetadata.title}</p>
-                <p><strong>${fileMetadata.week}</strong></p>
-                <p><strong>${fileMetadata.time}</strong></p>
-            `;
+            fileMetadata = { title: "範例效期補查", week: "週別：範例", time: `載入時間：${new Date().toLocaleTimeString('zh-TW')}` };
+            fileDetails.innerHTML = `<p><strong>標題：</strong>${fileMetadata.title}</p><p><strong>${fileMetadata.week}</strong></p><p><strong>${fileMetadata.time}</strong></p>`;
             fileInfoDisplay.classList.remove('hidden');
             fileInfo.textContent = '檔案：範例數據.xlsx';
 
-            // 模擬原始數據 (與之前版本相同，但會經過新的處理流程)
              rawData = [
-                // ... (此處省略範例數據，與前一版本相同) ...
-                 {
-                    "部門": "28", "貨號": "135543", "品名": "比菲多軟糖-葡萄",
-                    "WK9_最近效期日": "2024/12/26", "WK9_最遠效期日": "2025/05/31",
-                    "庫存量": 3, "陳列圖": "2800005A0200401", "退貨型態": "RR:可退貨不控制",
-                    "WK9_六個月內?": "Y", "WK9_已登記?": "N"
-                },
-                {
-                    "部門": "28", "貨號": "146344", "品名": "77脆可穀麥巧克力",
-                    "WK9_最近效期日": "2024/12/26", "WK9_最遠效期日": "2025/06/30",
-                    "庫存量": 32, "陳列圖": "2800005A0400101", "退貨型態": "NN:不可退",
-                    "WK9_六個月內?": "Y", "WK9_已登記?": "N"
-                },
-                 {
-                    "部門": "05", "貨號": "177493", "品名": "活沛多 OPC活妍葡萄籽膠囊60粒",
-                    "WK9_最近效期日": "2024/12/26", "WK9_最遠效期日": "2025/02/07", // 近效期
-                    "庫存量": 3, "陳列圖": "0433120E0300601", "退貨型態": "NN:不可退",
-                    "WK9_六個月內?": "Y", "WK9_已登記?": "N"
-                },
-                {
-                    "部門": "05", "貨號": "177498", "品名": "活沛多 蜂王乳芝麻美E錠60錠",
-                    "WK9_最近效期日": "2025/08/15", "WK9_最遠效期日": "2025/11/07", // 正常效期
-                    "庫存量": 5, "陳列圖": "0433120G0200401", "退貨型態": "NN:不可退",
-                    "WK9_六個月內?": "N", "WK9_已登記?": "Y"
-                },
-                 { // 缺少部門
-                    "貨號": "999999", "品名": "測試品 - 無部門",
-                    "WK9_最近效期日": "2025/09/01", "WK9_最遠效期日": "2025/09/01",
-                    "庫存量": 1, "陳列圖": "TEST", "退貨型態": "NN",
-                    "WK9_六個月內?": "N", "WK9_已登記?": "N"
-                },
-                { // 缺少品名
-                    "部門": "99", "貨號": "888888",
-                    "WK9_最近效期日": "2025/10/01", "WK9_最遠效期日": "2025/10/01",
-                    "庫存量": 2, "陳列圖": "TEST2", "退貨型態": "RR",
-                    "WK9_六個月內?": "N", "WK9_已登記?": "N"
-                },
-                 { // 日期格式錯誤
-                    "部門": "05", "貨號": "777777", "品名": "日期錯誤測試",
-                    "WK9_最近效期日": "2025-13-01", "WK9_最遠效期日": "2025/99/99",
-                    "庫存量": 3, "陳列圖": "TEST3", "退貨型態": "NN",
-                    "WK9_六個月內?": "N", "WK9_已登記?": "N"
-                }
-            ];
-
-            // 模擬異步處理
-            setTimeout(() => {
-                processAndNormalizeData();
-            }, 500); // 延遲 0.5 秒模擬處理時間
+                 {"部門": "28", "貨號": "135543", "品名": "比菲多軟糖-葡萄", "近效": "2024/12/26", "遠效": "2025/05/31", "庫存": 3, "陳列": "28A02", "退貨": "RR", "6M": "Y", "登記": "N"},
+                 {"部門": "29", "貨號": "146344", "品名": "77脆可穀麥巧克力", "近效": "2024/12/26", "遠效": "2025/06/30", "庫存": 32, "陳列": "28A04", "退貨": "NN", "6M": "Y", "登記": "N"},
+                 {"部門": "05", "貨號": "177493", "品名": "活沛多 OPC活妍葡萄籽膠囊 60粒", "近效": "2025/01/15", "遠效": "2025/02/07", "庫存": 3, "陳列": "04E03", "退貨": "NN", "6M": "Y", "登記": "N"}, // 近效期
+                 {"部門": "04", "貨號": "177498", "品名": "活沛多 蜂王乳芝麻美E錠 60錠", "近效": "2025/08/15", "遠效": "2025/11/07", "庫存": 5, "陳列": "04G02", "退貨": "NN", "6M": "N", "登記": "Y"},
+                 {"部門": "03", "貨號": "208625", "品名": "活沛多 啾咪QQ膠原軟糖-葡萄", "近效": "2025/09/01", "遠效": "2025/12/01", "庫存": 10, "陳列": "04E03", "退貨": "NN", "6M": "N", "登記": "N"},
+                 {"部門": "02", "貨號": "999999", "品名": "測試藥品A", "近效": "2025/07/20", "遠效": "2025/10/20", "庫存": 8, "陳列": "02A01", "退貨": "RR", "6M": "N", "登記": "Y"},
+                 {"部門": "07", "貨號": "888888", "品名": "測試藥品B", "近效": "2025/02/28", "遠效": "2025/05/28", "庫存": 15, "陳列": "07B03", "退貨": "RN", "6M": "Y", "登記": "N"}, // 近效期
+                 {"部門": "05", "貨號": "777777", "品名": "日期錯誤測試", "近效": "無效日期", "遠效": null, "庫存": 3, "陳列": "TEST3", "退貨": "NN", "6M": "N", "登記": "N"},
+                 {"部門": "28", "貨號": "111111", "品名": "另一個零食", "近效": "2025/10/10", "遠效": "2026/01/10", "庫存": 20, "陳列": "28B05", "退貨": "RR", "6M": "N", "登記": "N"},
+             ];
+            setTimeout(() => { processAndNormalizeData(); }, 300);
         });
 
         // --- 初始化 ---
-        debug("屈臣氏效期檢查表處理工具 (優化版) 初始化完成。");
+        debug("屈臣氏效期檢查表處理工具 (優化版 v3) 初始化完成。");
 
     </script>
 </body>
