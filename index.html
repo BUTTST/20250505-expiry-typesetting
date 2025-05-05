@@ -73,6 +73,64 @@
             font-size: 0.9rem;
             color: #666;
         }
+        
+        /* 版本信息和幫助按鈕 */
+        .version-info {
+            font-size: 0.75rem;
+            color: #888;
+            text-align: center;
+            margin-top: 1.5rem;
+            padding-top: 0.5rem;
+            border-top: 1px solid #eee;
+        }
+        
+        .help-btn {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            width: 50px;
+            height: 50px;
+            background-color: var(--primary-color);
+            color: white;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+            cursor: pointer;
+            z-index: 1000;
+            transition: all 0.3s;
+        }
+        
+        .help-btn:hover {
+            background-color: var(--secondary-color);
+            transform: scale(1.05);
+        }
+        
+        .help-content {
+            display: none;
+            position: fixed;
+            bottom: 80px;
+            right: 20px;
+            width: 300px;
+            max-width: 90vw;
+            background-color: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 15px rgba(0,0,0,0.2);
+            padding: 1rem;
+            z-index: 999;
+        }
+        
+        .help-content.show {
+            display: block;
+            animation: slideIn 0.3s forwards;
+        }
+        
+        @keyframes slideIn {
+            from { transform: translateY(20px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
 
         .toolbar {
             display: flex;
@@ -313,6 +371,35 @@
 
         <div class="guide-tip">
             請上傳效期檢查表（CSV、XLS或XLSX格式）以進行資料視覺化。
+            <button id="settings-btn" style="float:right; background-color:#f5f5f5; color:#333; border:1px solid #ccc; padding:2px 8px; border-radius:3px; font-size:0.8rem;">
+                ⚙️ 設定
+            </button>
+        </div>
+        
+        <!-- 設定面板 -->
+        <div id="settings-panel" class="card" style="display:none; margin-bottom:1rem;">
+            <h3>效期檢查設定</h3>
+            <div style="display:flex; flex-wrap:wrap; gap:1rem; margin-bottom:1rem;">
+                <div>
+                    <label for="danger-days">危險效期天數 (紅色):</label>
+                    <input type="number" id="danger-days" min="1" max="180" value="30" style="width:80px; padding:5px;">
+                </div>
+                <div>
+                    <label for="warning-days">警告效期天數 (橙色):</label>
+                    <input type="number" id="warning-days" min="1" max="365" value="90" style="width:80px; padding:5px;">
+                </div>
+                <div>
+                    <label for="six-month-days">六個月效期天數:</label>
+                    <input type="number" id="six-month-days" min="1" max="365" value="180" style="width:80px; padding:5px;">
+                </div>
+            </div>
+            <div>
+                <label>表格可見欄位:</label>
+                <div id="column-toggles" style="display:flex; flex-wrap:wrap; gap:0.5rem; margin-top:0.5rem;">
+                    <!-- 動態生成的列開關 -->
+                </div>
+            </div>
+            <button id="save-settings" class="success" style="margin-top:1rem;">儲存設定</button>
         </div>
 
         <div class="card">
@@ -327,6 +414,9 @@
                     <div class="progress-bar" id="progress-bar"></div>
                 </div>
             </div>
+            <div class="info-text">
+                <p><strong>提示：</strong> 支援 CSV、Excel 檔案格式。若遇到編碼問題，請嘗試另存檔案為 UTF-8 格式再上傳。</p>
+            </div>
         </div>
 
         <div id="content-area" class="hidden">
@@ -338,6 +428,9 @@
                 <div class="toolbar">
                     <button id="btn-highlight" class="warning">標示未登記效期品</button>
                     <button id="btn-group-toggle">收合/展開部門分組</button>
+                    <div style="position:relative;">
+                        <input type="text" id="global-search" placeholder="全局搜尋..." style="padding:8px; border-radius:4px; border:1px solid #ddd; width:100%;">
+                    </div>
                     <select id="sort-select">
                         <option value="">-- 排序方式 --</option>
                         <option value="dept">依部門排序</option>
@@ -346,8 +439,14 @@
                         <option value="sixMonthYn">依六個月內效期品排序</option>
                         <option value="stock">依庫存量排序</option>
                     </select>
-                    <button id="btn-export" class="success">匯出CSV</button>
+                    <select id="export-select">
+                        <option value="csv">匯出CSV</option>
+                        <option value="xlsx">匯出Excel</option>
+                        <option value="selected">僅匯出已選項目</option>
+                    </select>
+                    <button id="btn-export" class="success">匯出</button>
                     <button id="btn-print">列印報表</button>
+                    <button id="btn-clear" class="danger">清除數據</button>
                 </div>
 
                 <div class="filter-section">
@@ -367,6 +466,27 @@
             <span></span>
             <p>處理中，請稍候...</p>
         </div>
+        
+        <!-- 幫助按鈕 -->
+        <div class="help-btn" id="help-btn">?</div>
+        <div class="help-content" id="help-content">
+            <h3>使用說明</h3>
+            <ul>
+                <li><b>上傳檔案:</b> 支援CSV、XLS、XLSX格式</li>
+                <li><b>部門分組:</b> 點選部門名稱可展開/折疊該部門商品</li>
+                <li><b>標示功能:</b> 點選「標示未登記效期品」可一鍵標記所有未登記的六個月內效期品</li>
+                <li><b>排序功能:</b> 可按不同條件排序商品</li>
+                <li><b>點選商品:</b> 點選任一行可標記該商品，再次點選可取消</li>
+                <li><b>匯出功能:</b> 可匯出CSV或Excel，可選擇僅匯出已標記商品</li>
+                <li><b>列印報表:</b> 生成可列印的商品報表</li>
+            </ul>
+            <p><small>本工具於瀏覽器本地運行，不會上傳資料到伺服器</small></p>
+        </div>
+        
+        <!-- 版本信息 -->
+        <div class="version-info">
+            屈臣氏效期檢查表視覺化工具 v1.2.0 | 更新日期: 2025-05-05
+        </div>
     </div>
 
     <script>
@@ -377,6 +497,7 @@
         let isHighlighted = false;
         let isGroupCollapsed = false;
         let activeDeptFilters = [];
+        let tableColumns = []; // 用於存儲表格列定義
 
         // DOM 元素
         const uploaderArea = document.getElementById('uploader-area');
@@ -393,6 +514,11 @@
         const progressBar = document.getElementById('progress-bar');
         const statsArea = document.getElementById('stats-area');
         const deptChips = document.getElementById('dept-chips');
+        const helpBtn = document.getElementById('help-btn');
+        const helpContent = document.getElementById('help-content');
+        const settingsBtn = document.getElementById('settings-btn');
+        const settingsPanel = document.getElementById('settings-panel');
+        const saveSettingsBtn = document.getElementById('save-settings');
 
         // 拖拽上傳功能
         ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
@@ -453,19 +579,53 @@
                     // 嘗試檢測編碼並解析CSV
                     let content = e.target.result;
                     
+                    // 檢測是否需要處理BOM標記
+                    if (content.charCodeAt(0) === 0xFEFF) {
+                        content = content.slice(1);
+                    }
+                    
+                    // 嘗試多種編碼解析
+                    const encodings = ["UTF-8", "Big5", "GB18030"];
+                    let parsedResults = null;
+                    
                     // 使用 PapaParse 解析
                     Papa.parse(content, {
                         header: true,
                         skipEmptyLines: true,
                         encoding: "UTF-8",
+                        delimitersToGuess: [',', '\t', '|', ';', '　'], // 添加全形空格作為可能的分隔符
                         complete: function(results) {
                             if (results.data && results.data.length > 0) {
-                                // 檢查是否有預期的欄位
-                                // 預處理：移除前幾行非表格部分
-                                let validData = results.data.filter(row => {
-                                    // 過濾掉空行和標題行
-                                    return Object.values(row).some(val => val && val.trim() !== '');
-                                });
+                                // 找出真正的數據部分（跳過標題行等）
+                                let validData = [];
+                                let foundHeader = false;
+                                
+                                // 尋找包含關鍵字段的行
+                                for (let i = 0; i < results.data.length; i++) {
+                                    const row = results.data[i];
+                                    const keys = Object.keys(row);
+                                    
+                                    // 檢查是否是標題行
+                                    if (!foundHeader) {
+                                        const values = Object.values(row).map(v => String(v || '').trim());
+                                        if (values.some(v => v.includes('部門') || v.includes('貨號') || v.includes('效期'))) {
+                                            foundHeader = true;
+                                            continue; // 跳過標題行
+                                        }
+                                    }
+                                    
+                                    // 檢查是否是有效數據行
+                                    if (foundHeader && Object.values(row).some(v => v && String(v).trim() !== '')) {
+                                        validData.push(row);
+                                    }
+                                }
+                                
+                                if (validData.length === 0) {
+                                    // 沒有找到有效數據，使用原始數據但過濾空行
+                                    validData = results.data.filter(row => 
+                                        Object.values(row).some(v => v && String(v).trim() !== '')
+                                    );
+                                }
                                 
                                 rawData = validData;
                                 processData();
@@ -507,7 +667,12 @@
             reader.onload = function(e) {
                 try {
                     const data = new Uint8Array(e.target.result);
-                    const workbook = XLSX.read(data, { type: 'array' });
+                    const workbook = XLSX.read(data, { 
+                        type: 'array',
+                        cellDates: true,  // 確保日期被正確處理
+                        cellNF: true,     // 保留數字格式
+                        cellStyles: true  // 保留單元格樣式信息
+                    });
                     
                     // 獲取第一個工作表
                     const firstSheetName = workbook.SheetNames[0];
@@ -522,10 +687,15 @@
                     
                     // 找到真正的標題行（通常是包含"部門"、"貨號"、"品名"等）
                     let headerRowIndex = -1;
-                    for (let i = 0; i < 10 && i < jsonData.length; i++) {
+                    for (let i = 0; i < Math.min(15, jsonData.length); i++) {
                         let row = jsonData[i];
                         let values = Object.values(row).map(v => String(v || '').trim());
-                        if (values.some(v => v.includes('部門') || v.includes('貨號') || v.includes('效期'))) {
+                        if (values.some(v => 
+                            v.includes('部門') || 
+                            v.includes('貨號') || 
+                            v.includes('品名') || 
+                            v.includes('效期')
+                        )) {
                             headerRowIndex = i;
                             break;
                         }
@@ -539,7 +709,7 @@
                     // 提取標題和數據
                     const headers = jsonData[headerRowIndex];
                     const dataRows = jsonData.slice(headerRowIndex + 1).filter(row => {
-                        // 過濾空行
+                        // 過濾空行或只包含無意義數據的行
                         return Object.values(row).some(v => v && String(v).trim() !== '');
                     });
                     
@@ -547,7 +717,9 @@
                     const mappedData = dataRows.map(row => {
                         const mappedRow = {};
                         Object.keys(headers).forEach(key => {
-                            mappedRow[headers[key]] = row[key] || '';
+                            if (headers[key]) {
+                                mappedRow[headers[key]] = row[key] || '';
+                            }
                         });
                         return mappedRow;
                     });
@@ -617,13 +789,893 @@
         function normalizeRow(row) {
             // 對應字段別名
             const fieldMap = {
-                dept: ['部門', '部門別', '門市部門'],
-                sku: ['貨號', '商品編號', '品號'],
-                name: ['品名', '商品名稱', '商品名'],
-                nearDate: ['WK', '最近效期日', '最近效期', '最短效期'],
-                farDate: ['WK', '最遠效期日', '最遠效期', '最長效期'],
-                stock: ['庫存量', '庫存', '數量'],
-                displayCode: ['陳列圖', '陳列圖號', '陳列位置', '陳列編號'],
+                dept: ['部門', '部門別', '門市部門', '部門代號', '部門名稱'],
+                sku: ['貨號', '商品編號', '品號', '商品貨號'],
+                name: ['品名', '商品名稱', '商品名', '名稱'],
+                nearDate: ['WK\\d+.*最近效期日', '最近效期日', '最近效期', '最短效期', '近效期', 'WK\\d+.*200家.*最近'],
+                farDate: ['WK\\d+.*最遠效期日', '最遠效期日', '最遠效期', '最長效期', '遠效期', 'WK\\d+.*200家.*最遠'],
+                stock: ['庫存量', '庫存', '數量', '庫存數量', '現有數量'],
+                displayCode: ['陳列圖', '陳列圖號', '陳列位置', '陳列編號', '陳列代碼'],
                 returnType: ['退貨型態', '退貨類型', '退貨方式', '退貨狀態'],
-                sixMonthYn: ['六個月內', '6M內', '六個月內效期品'],
-     
+                sixMonthYn: ['六個月內', '6M內', '六個月內效期品', '是否.*六個月', 'WK\\d+效期.*是否有六個月'],
+                registeredYn: ['已用盤點機補登記', '已.*登記', '登記', '已登記', 'WK\\d+效期.*是否已經']
+            };
+            
+            // 標準化行數據
+            const normalizedRow = {
+                dept: '',
+                sku: '',
+                name: '',
+                nearDate: '',
+                farDate: '',
+                stock: 0,
+                displayCode: '',
+                returnType: '',
+                sixMonthYn: 'N',
+                registeredYn: 'N',
+                _selected: false  // 用於追蹤選中狀態
+            };
+            
+            // 對每個字段使用映射尋找匹配
+            Object.keys(fieldMap).forEach(field => {
+                const aliases = fieldMap[field];
+                let value = '';
+                
+                // 遍歷所有可能的別名
+                for (const alias of aliases) {
+                    // 檢查正則表達式匹配
+                    if (alias.includes('\\d')) {
+                        const regex = new RegExp(alias, 'i');
+                        const matchingKey = Object.keys(row).find(key => regex.test(key));
+                        if (matchingKey) {
+                            value = row[matchingKey];
+                            break;
+                        }
+                    } 
+                    // 檢查精確和部分匹配
+                    else {
+                        // 精確匹配
+                        if (row[alias] !== undefined) {
+                            value = row[alias];
+                            break;
+                        }
+                        
+                        // 部分匹配（對於包含某些關鍵詞的欄位名）
+                        const matchingKey = Object.keys(row).find(key => 
+                            key.toLowerCase().includes(alias.toLowerCase())
+                        );
+                        if (matchingKey) {
+                            value = row[matchingKey];
+                            break;
+                        }
+                    }
+                }
+                
+                // 標準化值
+                if (value !== undefined && value !== null) {
+                    if (field === 'nearDate' || field === 'farDate') {
+                        // 嘗試標準化日期格式
+                        if (value && typeof value === 'string') {
+                            // 移除時間部分（如果有）
+                            value = String(value).split(' ')[0];
+                        }
+                    } else if (field === 'stock') {
+                        // 確保庫存是數字
+                        const stockNum = parseInt(value);
+                        value = isNaN(stockNum) ? 0 : stockNum;
+                    } else if (field === 'sixMonthYn' || field === 'registeredYn') {
+                        // 標準化 Y/N 值
+                        if (typeof value === 'string') {
+                            value = value.toUpperCase().includes('Y') ? 'Y' : 'N';
+                        } else {
+                            value = 'N';
+                        }
+                    }
+                    
+                    normalizedRow[field] = value;
+                }
+            });
+            
+            // 特別處理效期和產品名稱
+            if (normalizedRow.name) {
+                // 清除產品名稱中的多餘空格
+                normalizedRow.name = normalizedRow.name.trim().replace(/\s+/g, ' ');
+            }
+            
+            // 計算距今日期
+            if (normalizedRow.nearDate) {
+                try {
+                    const dateStr = normalizedRow.nearDate;
+                    // 支援多種日期格式
+                    let dateParts = dateStr.match(/(\d{4})[-/](\d{1,2})[-/](\d{1,2})/);
+                    
+                    // 如果沒匹配到標準格式，嘗試其他格式
+                    if (!dateParts) {
+                        // 嘗試 DD/MM/YYYY 格式
+                        dateParts = dateStr.match(/(\d{1,2})[-/](\d{1,2})[-/](\d{4})/);
+                        if (dateParts) {
+                            dateParts = [dateStr, dateParts[3], dateParts[2], dateParts[1]]; // 調整順序為YYYY MM DD
+                        }
+                    }
+                    
+                    if (dateParts) {
+                        const year = parseInt(dateParts[1]);
+                        const month = parseInt(dateParts[2]) - 1; // 月份是0-11
+                        const day = parseInt(dateParts[3]);
+                        
+                        // 驗證日期是否有效
+                        if (year >= 2000 && year <= 2100 && month >= 0 && month <= 11 && day >= 1 && day <= 31) {
+                            const expiryDate = new Date(year, month, day);
+                            const today = new Date();
+                            today.setHours(0, 0, 0, 0);
+                            
+                            const diffTime = expiryDate - today;
+                            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                            
+                            normalizedRow.daysToExpiry = diffDays;
+                            
+                            // 從設定獲取效期天數
+                            let dangerDays = 30;
+                            let warningDays = 90;
+                            let sixMonthDays = 180;
+                            
+                            // 嘗試從本地存儲獲取自定義效期天數
+                            try {
+                                const settings = JSON.parse(localStorage.getItem('watsons-expiry-settings') || '{}');
+                                dangerDays = settings.dangerDays || dangerDays;
+                                warningDays = settings.warningDays || warningDays;
+                                sixMonthDays = settings.sixMonthDays || sixMonthDays;
+                            } catch (e) {
+                                console.warn('無法獲取效期設定:', e);
+                            }
+                            
+                            // 設定六個月效期標記
+                            if (diffDays <= sixMonthDays && normalizedRow.sixMonthYn !== 'Y') {
+                                normalizedRow.sixMonthYn = 'Y';
+                            }
+                            
+                            // 標記臨近效期
+                            if (diffDays <= dangerDays) {
+                                normalizedRow.expiryStatus = 'danger';
+                            } else if (diffDays <= warningDays) {
+                                normalizedRow.expiryStatus = 'warning';
+                            } else {
+                                normalizedRow.expiryStatus = 'normal';
+                            }
+                        }
+                    }
+                } catch (error) {
+                    console.warn("日期解析錯誤:", error);
+                }
+            }
+            
+            return normalizedRow;
+        }
+
+        // 更新UI
+        function updateUI() {
+            // 創建並初始化表格
+            createTable();
+            
+            // 更新統計
+            updateStats();
+            
+            // 創建部門過濾器
+            createDeptFilters();
+            
+            // 設置事件監聽器
+            setupEventListeners();
+        }
+
+        // 創建表格
+        function createTable() {
+            // 獲取適合的表格高度（根據視窗大小動態調整）
+            const windowHeight = window.innerHeight;
+            const tableHeight = Math.max(350, windowHeight - 300); // 至少350px，但會根據窗口大小調整
+            
+            // 定義表格列
+            tableColumns = [
+                { title: "部門", field: "dept", headerFilter: true, minWidth: 60, visible: true },
+                { title: "貨號", field: "sku", headerFilter: true, minWidth: 80, visible: true, 
+                  frozen: window.innerWidth > 768 ? true : false },
+                { title: "品名", field: "name", headerFilter: true, minWidth: 220, visible: true, 
+                  frozen: window.innerWidth > 768 ? true : false },
+                { 
+                    title: "最近效期", 
+                    field: "nearDate", 
+                    minWidth: 110, 
+                    visible: true,
+                    headerFilter: true,
+                    formatter: function(cell) {
+                        const value = cell.getValue();
+                        const row = cell.getRow().getData();
+                        if (value) {
+                            let css = '';
+                            if (row.expiryStatus === 'danger') {
+                                css = 'expiry-danger';
+                            } else if (row.expiryStatus === 'warning') {
+                                css = 'expiry-warning';
+                            } else {
+                                css = 'expiry-normal';
+                            }
+                            
+                            const daysText = row.daysToExpiry !== undefined ? 
+                                ` (${row.daysToExpiry > 0 ? `還有${row.daysToExpiry}天` : `已過期${Math.abs(row.daysToExpiry)}天`})` : '';
+                            
+                            return `<span class="${css}">${value}${daysText}</span>`;
+                        }
+                        return value;
+                    }
+                },
+                { title: "最遠效期", field: "farDate", minWidth: 110, visible: true },
+                { title: "庫存量", field: "stock", minWidth: 80, visible: true, hozAlign: "right", 
+                  headerFilter:"number", headerFilterPlaceholder:"過濾數量..." },
+                { title: "陳列位置", field: "displayCode", minWidth: 110, visible: true },
+                { title: "退貨型態", field: "returnType", minWidth: 140, visible: true, headerFilter: true },
+                { 
+                    title: "六個月內", 
+                    field: "sixMonthYn", 
+                    minWidth: 90, 
+                    visible: true,
+                    headerFilter:"list", 
+                    headerFilterParams:{
+                        values:{"Y":"是", "N":"否"},
+                        clearable:true
+                    },
+                    formatter: function(cell) {
+                        const value = cell.getValue();
+                        if (value === 'Y') {
+                            return '<span style="color:#d32f2f;font-weight:bold;">是</span>';
+                        }
+                        return '<span>否</span>';
+                    }
+                },
+                { 
+                    title: "已登記", 
+                    field: "registeredYn", 
+                    minWidth: 80, 
+                    visible: true,
+                    headerFilter:"list", 
+                    headerFilterParams:{
+                        values:{"Y":"是", "N":"否"},
+                        clearable:true
+                    },
+                    formatter: function(cell) {
+                        const value = cell.getValue();
+                        if (value === 'Y') {
+                            return '<span style="color:#2e7d32;">是</span>';
+                        }
+                        return '<span style="color:#d32f2f;">否</span>';
+                    }
+                }
+            ];
+            
+            // 初始化表格
+            table = new Tabulator("#table", {
+                height: tableHeight,
+                layout: "fitDataFill",
+                responsiveLayout: "collapse",
+                data: processedData,
+                columns: tableColumns,
+                groupBy: "dept",
+                initialSort: [
+                    {column: "dept", dir: "asc"},
+                    {column: "nearDate", dir: "asc"}
+                ],
+                placeholder: "無資料或未符合過濾條件",
+                pagination: true,
+                paginationSize: 100,
+                paginationSizeSelector: [50, 100, 200, 500, true],
+                movableColumns: true,
+                columnHeaderVertAlign: "bottom",
+                groupHeader: function(value, count, data, group) {
+                    return `<div>部門：${value} <span style="color:#777">(${count}個商品)</span></div>`;
+                },
+                rowFormatter: function(row) {
+                    // 設置行樣式
+                    const data = row.getData();
+                    if (data._selected) {
+                        row.getElement().classList.add("highlight-row");
+                    } else {
+                        row.getElement().classList.remove("highlight-row");
+                    }
+                    
+                    // 設置效期臨近的行樣式
+                    if (data.expiryStatus === 'danger') {
+                        row.getElement().classList.add("expiring-soon");
+                    } else {
+                        row.getElement().classList.remove("expiring-soon");
+                    }
+                },
+                rowClick: function(e, row) {
+                    // 切換行選擇狀態
+                    const data = row.getData();
+                    data._selected = !data._selected;
+                    row.update(data);
+                    
+                    // 更新本地存儲
+                    saveSelectedItems();
+                },
+                // 加載完成後的回調
+                dataLoaded: function(data) {
+                    // 從本地存儲加載選擇狀態
+                    loadSelectedItems();
+                },
+                // 添加全局搜索功能
+                persistenceID: "watsons-expiry-table",
+                persistenceMode: "local",
+                persistentLayout: true
+            });
+        }
+
+        // 更新統計信息
+        function updateStats() {
+            const stats = {
+                total: processedData.length,
+                sixMonthCount: processedData.filter(item => item.sixMonthYn === 'Y').length,
+                missingRegistration: processedData.filter(item => 
+                    item.sixMonthYn === 'Y' && item.registeredYn === 'N'
+                ).length,
+                expiringCount: processedData.filter(item => 
+                    item.daysToExpiry !== undefined && item.daysToExpiry <= 90
+                ).length,
+                deptCount: new Set(processedData.map(item => item.dept)).size
+            };
+            
+            // 生成統計卡片
+            statsArea.innerHTML = `
+                <div class="stat-card">
+                    <div class="stat-number">${stats.total}</div>
+                    <div class="stat-label">總商品數</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number">${stats.deptCount}</div>
+                    <div class="stat-label">部門數</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number">${stats.sixMonthCount}</div>
+                    <div class="stat-label">六個月內效期品</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number">${stats.missingRegistration}</div>
+                    <div class="stat-label">未登記效期品</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number">${stats.expiringCount}</div>
+                    <div class="stat-label">90天內到期</div>
+                </div>
+            `;
+        }
+
+        // 創建部門過濾器
+        function createDeptFilters() {
+            // 獲取所有部門
+            const depts = [...new Set(processedData.map(item => item.dept))].sort();
+            
+            // 創建部門選擇片段
+            let chipsHtml = `<div class="chip active" data-dept="all">全部</div>`;
+            
+            depts.forEach(dept => {
+                if (dept) {
+                    chipsHtml += `<div class="chip" data-dept="${dept}">${dept}</div>`;
+                }
+            });
+            
+            deptChips.innerHTML = chipsHtml;
+            
+            // 添加點擊事件
+            const chips = deptChips.querySelectorAll('.chip');
+            chips.forEach(chip => {
+                chip.addEventListener('click', function() {
+                    const dept = this.getAttribute('data-dept');
+                    
+                    if (dept === 'all') {
+                        // 選擇全部時，清除所有過濾
+                        activeDeptFilters = [];
+                        chips.forEach(c => c.classList.remove('active'));
+                        this.classList.add('active');
+                    } else {
+                        // 切換此部門的選擇狀態
+                        document.querySelector('.chip[data-dept="all"]').classList.remove('active');
+                        
+                        if (this.classList.contains('active')) {
+                            this.classList.remove('active');
+                            activeDeptFilters = activeDeptFilters.filter(d => d !== dept);
+                        } else {
+                            this.classList.add('active');
+                            activeDeptFilters.push(dept);
+                        }
+                        
+                        // 如果沒有選中的部門，則自動選中"全部"
+                        if (activeDeptFilters.length === 0) {
+                            document.querySelector('.chip[data-dept="all"]').classList.add('active');
+                        }
+                    }
+                    
+                    // 應用過濾器
+                    applyDeptFilter();
+                });
+            });
+        }
+
+        // 應用部門過濾器
+        function applyDeptFilter() {
+            if (activeDeptFilters.length === 0) {
+                // 顯示所有部門
+                table.clearFilter();
+            } else {
+                // 過濾選中的部門
+                table.setFilter("dept", "in", activeDeptFilters);
+            }
+        }
+
+        // 保存選擇項目到本地存儲
+        function saveSelectedItems() {
+            try {
+                const selectedSkus = processedData
+                    .filter(item => item._selected)
+                    .map(item => item.sku);
+                
+                if (selectedSkus.length > 0) {
+                    localStorage.setItem('watsons-selected-items', JSON.stringify(selectedSkus));
+                } else {
+                    localStorage.removeItem('watsons-selected-items');
+                }
+            } catch (e) {
+                console.warn('無法保存選擇狀態到本地存儲:', e);
+            }
+        }
+        
+        // 從本地存儲加載選擇項目
+        function loadSelectedItems() {
+            try {
+                const savedSkus = localStorage.getItem('watsons-selected-items');
+                
+                if (savedSkus) {
+                    const skuArray = JSON.parse(savedSkus);
+                    
+                    processedData.forEach(item => {
+                        if (skuArray.includes(item.sku)) {
+                            item._selected = true;
+                        }
+                    });
+                    
+                    // 更新表格
+                    table.setData(processedData);
+                }
+            } catch (e) {
+                console.warn('無法從本地存儲加載選擇狀態:', e);
+            }
+        }
+        
+        // 設置幫助和設定的事件監聽器
+        function setupHelpAndSettings() {
+            // 設定按鈕點擊事件
+            settingsBtn.addEventListener('click', function() {
+                settingsPanel.style.display = settingsPanel.style.display === 'none' ? 'block' : 'none';
+                
+                // 如果開啟了設定面板，生成列開關
+                if (settingsPanel.style.display === 'block' && tableColumns.length > 0) {
+                    generateColumnToggles();
+                }
+            });
+            
+            // 保存設定按鈕點擊事件
+            saveSettingsBtn.addEventListener('click', function() {
+                // 獲取效期天數設定
+                const dangerDays = parseInt(document.getElementById('danger-days').value) || 30;
+                const warningDays = parseInt(document.getElementById('warning-days').value) || 90;
+                const sixMonthDays = parseInt(document.getElementById('six-month-days').value) || 180;
+                
+                // 獲取列可見性設定
+                const columnVisibility = {};
+                const toggles = document.querySelectorAll('#column-toggles input[type="checkbox"]');
+                toggles.forEach(toggle => {
+                    columnVisibility[toggle.value] = toggle.checked;
+                });
+                
+                // 保存設定到本地存儲
+                const settings = {
+                    dangerDays,
+                    warningDays,
+                    sixMonthDays,
+                    columnVisibility
+                };
+                
+                localStorage.setItem('watsons-expiry-settings', JSON.stringify(settings));
+                
+                // 應用列可見性設定
+                if (table) {
+                    tableColumns.forEach(column => {
+                        const field = column.field;
+                        if (columnVisibility[field] !== undefined) {
+                            table.getColumn(field).toggle(columnVisibility[field]);
+                        }
+                    });
+                }
+                
+                // 重新處理數據以應用新的效期設定
+                if (processedData.length > 0) {
+                    processedData = processedData.map(item => {
+                        // 重新計算效期狀態
+                        if (item.daysToExpiry !== undefined) {
+                            // 標記臨近效期
+                            if (item.daysToExpiry <= dangerDays) {
+                                item.expiryStatus = 'danger';
+                            } else if (item.daysToExpiry <= warningDays) {
+                                item.expiryStatus = 'warning';
+                            } else {
+                                item.expiryStatus = 'normal';
+                            }
+                            
+                            // 重設六個月效期標記
+                            if (item.daysToExpiry <= sixMonthDays) {
+                                item.sixMonthYn = 'Y';
+                            }
+                        }
+                        return item;
+                    });
+                    
+                    // 更新表格數據
+                    table.setData(processedData);
+                }
+                
+                // 隱藏設定面板
+                settingsPanel.style.display = 'none';
+                
+                // 顯示設定已保存提示
+                alert('設定已保存並應用');
+            });
+            
+            // 幫助按鈕點擊事件
+            helpBtn.addEventListener('click', function() {
+                helpContent.classList.toggle('show');
+            });
+            
+            // 點擊其他地方關閉幫助內容
+            document.addEventListener('click', function(event) {
+                if (!helpBtn.contains(event.target) && !helpContent.contains(event.target)) {
+                    helpContent.classList.remove('show');
+                }
+            });
+        }
+        
+        // 生成列開關
+        function generateColumnToggles() {
+            const columnToggles = document.getElementById('column-toggles');
+            columnToggles.innerHTML = '';
+            
+            // 從本地存儲獲取列可見性設定
+            let columnVisibility = {};
+            try {
+                const settings = JSON.parse(localStorage.getItem('watsons-expiry-settings') || '{}');
+                columnVisibility = settings.columnVisibility || {};
+            } catch (e) {
+                console.warn('無法獲取列可見性設定:', e);
+            }
+            
+            // 為每個列創建開關
+            tableColumns.forEach(column => {
+                const isVisible = columnVisibility[column.field] !== undefined ? 
+                    columnVisibility[column.field] : (column.visible !== false);
+                
+                const toggle = document.createElement('label');
+                toggle.style.display = 'inline-flex';
+                toggle.style.alignItems = 'center';
+                toggle.style.marginRight = '12px';
+                
+                const checkbox = document.createElement('input');
+                checkbox.type = 'checkbox';
+                checkbox.value = column.field;
+                checkbox.checked = isVisible;
+                checkbox.style.marginRight = '5px';
+                
+                toggle.appendChild(checkbox);
+                toggle.appendChild(document.createTextNode(column.title));
+                
+                columnToggles.appendChild(toggle);
+            });
+        }
+        
+        // 設置事件監聽器
+        function setupEventListeners() {
+            // 設置幫助和設定相關的事件監聽器
+            setupHelpAndSettings();
+            
+            // 標記未登記效期品按鈕
+            btnHighlight.addEventListener('click', function() {
+                isHighlighted = !isHighlighted;
+                
+                if (isHighlighted) {
+                    // 標記未登記的六個月內效期品
+                    processedData.forEach(item => {
+                        if (item.sixMonthYn === 'Y' && item.registeredYn === 'N') {
+                            item._selected = true;
+                        }
+                    });
+                    
+                    btnHighlight.textContent = "清除標記";
+                    btnHighlight.classList.remove('warning');
+                    btnHighlight.classList.add('danger');
+                } else {
+                    // 取消所有標記
+                    processedData.forEach(item => {
+                        item._selected = false;
+                    });
+                    
+                    btnHighlight.textContent = "標示未登記效期品";
+                    btnHighlight.classList.remove('danger');
+                    btnHighlight.classList.add('warning');
+                }
+                
+                // 更新表格以反映變化
+                table.setData(processedData);
+                
+                // 保存選擇狀態
+                saveSelectedItems();
+            });
+            
+            // 收合/展開按鈕
+            btnGroupToggle.addEventListener('click', function() {
+                isGroupCollapsed = !isGroupCollapsed;
+                
+                if (isGroupCollapsed) {
+                    table.getGroups().forEach(group => {
+                        group.hide();
+                    });
+                } else {
+                    table.getGroups().forEach(group => {
+                        group.show();
+                    });
+                }
+            });
+            
+            // 全局搜尋
+            const globalSearch = document.getElementById('global-search');
+            globalSearch.addEventListener('keyup', function(e) {
+                const value = this.value.trim().toLowerCase();
+                
+                if (value.length > 0) {
+                    table.setFilter(function(data){
+                        // 搜尋多個欄位
+                        const nameMatch = data.name && data.name.toLowerCase().includes(value);
+                        const skuMatch = data.sku && data.sku.toLowerCase().includes(value);
+                        const deptMatch = data.dept && data.dept.toLowerCase().includes(value);
+                        const displayCodeMatch = data.displayCode && data.displayCode.toLowerCase().includes(value);
+                        
+                        return nameMatch || skuMatch || deptMatch || displayCodeMatch;
+                    });
+                } else {
+                    // 清除過濾器
+                    table.clearFilter();
+                    // 重新應用部門過濾器
+                    if (activeDeptFilters.length > 0) {
+                        applyDeptFilter();
+                    }
+                }
+            });
+            
+            // 排序選擇器
+            sortSelect.addEventListener('change', function() {
+                const sortField = this.value;
+                
+                if (sortField) {
+                    if (sortField === 'sixMonthYn') {
+                        // 對六個月內效期品進行特殊排序
+                        table.setSort([
+                            {column: sortField, dir: "desc"},
+                            {column: "nearDate", dir: "asc"}
+                        ]);
+                    } else {
+                        table.setSort(sortField, "asc");
+                    }
+                } else {
+                    // 恢復預設排序
+                    table.setSort([
+                        {column: "dept", dir: "asc"},
+                        {column: "nearDate", dir: "asc"}
+                    ]);
+                }
+            });
+            
+            // 匯出按鈕
+            btnExport.addEventListener('click', function() {
+                const exportType = document.getElementById('export-select').value;
+                
+                // 確定匯出數據
+                let exportData;
+                
+                if (exportType === 'selected') {
+                    // 只匯出選中的項目
+                    exportData = processedData.filter(item => item._selected);
+                    if (exportData.length === 0) {
+                        alert("請先選擇要匯出的項目");
+                        return;
+                    }
+                } else {
+                    // 匯出可見項目
+                    exportData = table.getData("visible");
+                }
+                
+                // 添加匯出時間標記
+                const now = new Date();
+                const timestamp = `${now.getFullYear()}${(now.getMonth()+1).toString().padStart(2, '0')}${now.getDate().toString().padStart(2, '0')}_${now.getHours().toString().padStart(2, '0')}${now.getMinutes().toString().padStart(2, '0')}`;
+                
+                // 依據選擇匯出格式
+                if (exportType === 'xlsx') {
+                    // 匯出為Excel
+                    try {
+                        const workbook = XLSX.utils.book_new();
+                        
+                        // 將數據轉換為工作表
+                        const worksheet = XLSX.utils.json_to_sheet(exportData.map(item => {
+                            // 剔除非必要欄位
+                            const { _selected, expiryStatus, daysToExpiry, ...rest } = item;
+                            return rest;
+                        }));
+                        
+                        // 添加工作表到工作簿
+                        XLSX.utils.book_append_sheet(workbook, worksheet, "效期檢查表");
+                        
+                        // 寫入文件並下載
+                        XLSX.writeFile(workbook, `效期檢查表_已處理_${timestamp}.xlsx`);
+                    } catch (error) {
+                        console.error("Excel匯出錯誤:", error);
+                        alert("Excel匯出失敗，請嘗試使用CSV格式");
+                        
+                        // 返回CSV作為備選方案
+                        table.download("csv", `效期檢查表_已處理_${timestamp}.csv`, {}, exportData);
+                    }
+                } else {
+                    // 匯出為CSV
+                    table.download("csv", `效期檢查表_已處理_${timestamp}.csv`, {}, exportData);
+                }
+            });
+            
+            // 列印按鈕
+            btnPrint.addEventListener('click', function() {
+                // 創建一個打印友好的版本
+                const printWindow = window.open('', '_blank');
+                
+                // 獲取要打印的數據
+                let printData = table.getData("visible");
+                
+                // 如果有選擇項目，則只打印選中的項目
+                const selectedItems = processedData.filter(item => item._selected);
+                if (selectedItems.length > 0) {
+                    printData = selectedItems;
+                }
+                
+                // 生成打印內容
+                let printContent = `
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <meta charset="utf-8">
+                    <title>效期檢查表列印</title>
+                    <style>
+                        body { font-family: Arial, sans-serif; }
+                        table { width: 100%; border-collapse: collapse; }
+                        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+                        th { background-color: #f2f2f2; }
+                        .danger { color: #d32f2f; font-weight: bold; }
+                        .warning { color: #ff6f00; font-weight: bold; }
+                        .group-header { background-color: #eee; font-weight: bold; }
+                        @media print {
+                            .no-print { display: none; }
+                            body { font-size: 12px; }
+                        }
+                    </style>
+                </head>
+                <body>
+                    <div class="no-print" style="padding: 10px; margin-bottom: 20px; background: #f8f8f8;">
+                        <button onclick="window.print()">列印此報表</button>
+                        <button onclick="window.close()">關閉</button>
+                    </div>
+                    <h1>屈臣氏效期檢查表</h1>
+                    <p>列印時間: ${new Date().toLocaleString()}</p>
+                `;
+                
+                // 依部門分組
+                const groupedData = {};
+                printData.forEach(item => {
+                    if (!groupedData[item.dept]) {
+                        groupedData[item.dept] = [];
+                    }
+                    groupedData[item.dept].push(item);
+                });
+                
+                // 為每個部門生成表格
+                for (const dept in groupedData) {
+                    const deptItems = groupedData[dept];
+                    
+                    printContent += `
+                        <h2 class="group-header">部門：${dept} (${deptItems.length}個商品)</h2>
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>貨號</th>
+                                    <th>品名</th>
+                                    <th>最近效期</th>
+                                    <th>庫存量</th>
+                                    <th>陳列位置</th>
+                                    <th>六個月內</th>
+                                    <th>已登記</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                    `;
+                    
+                    // 添加每個商品的行
+                    deptItems.forEach(item => {
+                        const expiryClass = item.expiryStatus === 'danger' ? 'danger' : 
+                                          (item.expiryStatus === 'warning' ? 'warning' : '');
+                        const daysText = item.daysToExpiry !== undefined ? 
+                            `(${item.daysToExpiry > 0 ? `還有${item.daysToExpiry}天` : `已過期${Math.abs(item.daysToExpiry)}天`})` : '';
+                            
+                        printContent += `
+                            <tr>
+                                <td>${item.sku || ''}</td>
+                                <td>${item.name || ''}</td>
+                                <td class="${expiryClass}">${item.nearDate || ''} ${daysText}</td>
+                                <td>${item.stock || 0}</td>
+                                <td>${item.displayCode || ''}</td>
+                                <td>${item.sixMonthYn === 'Y' ? '是' : '否'}</td>
+                                <td>${item.registeredYn === 'Y' ? '是' : '否'}</td>
+                            </tr>
+                        `;
+                    });
+                    
+                    printContent += `
+                            </tbody>
+                        </table>
+                        <br>
+                    `;
+                }
+                
+                printContent += `
+                    <div class="no-print" style="padding: 10px; margin-top: 20px; background: #f8f8f8;">
+                        <button onclick="window.print()">列印此報表</button>
+                        <button onclick="window.close()">關閉</button>
+                    </div>
+                </body>
+                </html>`;
+                
+                printWindow.document.write(printContent);
+                printWindow.document.close();
+            });
+            
+            // 清除按鈕
+            document.getElementById('btn-clear').addEventListener('click', function() {
+                if (confirm('確定要清除當前資料嗎？這將移除已處理的所有資料，包括選擇標記。')) {
+                    // 清除資料
+                    processedData = [];
+                    rawData = [];
+                    table.clearData();
+                    
+                    // 清除本地存儲
+                    localStorage.removeItem('watsons-selected-items');
+                    
+                    // 重置界面狀態
+                    contentArea.classList.add('hidden');
+                    uploaderArea.classList.remove('highlight');
+                    fileInfo.textContent = '';
+                    
+                    // 重置部門過濾器
+                    activeDeptFilters = [];
+                    deptChips.innerHTML = '';
+                    
+                    // 重置匯出選擇器
+                    document.getElementById('export-select').selectedIndex = 0;
+                    
+                    // 重置排序選擇器
+                    sortSelect.selectedIndex = 0;
+                    
+                    // 重置全局搜尋
+                    document.getElementById('global-search').value = '';
+                }
+            });
+        }
+    </script>
+</body>
+</html>
