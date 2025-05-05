@@ -1,108 +1,629 @@
-<!DOCTYPE html><html lang="zh-TW"><head>
-<meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>效期檢查表 Viewer</title>
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="utf-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>屈臣氏效期檢查表視覺化工具</title>
 
-<!-- CDN -->
-<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-<link   href="https://cdn.jsdelivr.net/npm/tabulator-tables@5.5.0/dist/css/tabulator.min.css" rel="stylesheet">
-<script src="https://cdn.jsdelivr.net/npm/tabulator-tables@5.5.0/dist/js/tabulator.min.js"></script>
+    <!-- 引入必要的庫 -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/tabulator-tables/5.5.0/css/tabulator.min.css" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tabulator-tables/5.5.0/js/tabulator.min.js"></script>
 
-<style>
-body{font-family:system-ui,sans-serif;margin:1rem}
-#uploader{margin-bottom:.75rem}
-.highlight{background:#ffe58f}
-button{margin-right:.5rem}
-</style>
-</head><body>
+    <style>
+        :root {
+            --primary-color: #3498db;
+            --secondary-color: #2980b9;
+            --success-color: #2ecc71;
+            --warning-color: #f39c12;
+            --danger-color: #e74c3c;
+            --text-color: #333;
+            --card-bg: #fff;
+            --highlight-bg: #fffde7;
+            --border-color: #ddd;
+        }
 
-<input id="uploader" type="file" accept=".xlsx,.xls,.csv">
-<button id="toggle">標示/取消標示</button>
-<button id="collapse">收合/展開部門</button>
-<button id="download">匯出 CSV</button>
-<div id="table"></div>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f5f5f5;
+            color: var(--text-color);
+        }
 
-<script>
-let rawRows   = [], table=null, highlighted=false, collapsed=false;
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 1rem;
+        }
 
-/* 1⃣  將各種可能的標題 → 統一鍵名 */
-const aliasMap = {
-  dept      : ['部門','部門別','門市部門'],
-  sku       : ['貨號','商品編號','品號'],
-  name      : ['品名','商品名稱','品項'],
-  nearDate  : ['最近效期','最近效期日'],
-  farDate   : ['最遠效期','最遠效期日'],
-  stock     : ['庫存量','庫存','數量'],
-  displayCode:['陳列圖','陳列位置'],
-  returnType:['退貨型態','退貨狀態'],
-  sixMonthYn:['六個月內','6M內','六個月內效期品'],
-  patchedYn :['已用盤點機','已補登','已用盤點機補登記']
-};
+        header {
+            background-color: var(--primary-color);
+            color: white;
+            padding: 1rem;
+            text-align: center;
+            border-radius: 5px 5px 0 0;
+            margin-bottom: 1rem;
+        }
 
-function normalizeRow(r){
-  const o={};
-  for(const [std, aliases] of Object.entries(aliasMap)){
-    const key = Object.keys(r).find(k=>aliases.some(a=>k.includes(a)));
-    o[std] = std==='stock' ? (+r[key]||0) : r[key] ?? '';
-  }
-  // 六個月內？若檔案沒有該欄，直接用 nearDate 計算
-  if(o.sixMonthYn===''){
-    if(o.nearDate){
-      const n = new Date(o.nearDate), today=new Date();
-      o.sixMonthYn = (n - today)/(1000*3600*24) <= 180;
-    }
-  }else{
-    o.sixMonthYn = (''+o.sixMonthYn).trim().toUpperCase()==='Y';
-  }
-  o.patchedYn  = (''+o.patchedYn).trim().toUpperCase()==='Y';
-  return o;
-}
+        .card {
+            background-color: var(--card-bg);
+            border-radius: 5px;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+            margin-bottom: 1rem;
+            padding: 1rem;
+        }
 
-uploader.onchange = async e=>{
-  const f=e.target.files[0]; if(!f) return;
-  const wb = XLSX.read(await f.arrayBuffer(),{type:'array'});
-  const ws = wb.Sheets[wb.SheetNames[0]];
-  const json = XLSX.utils.sheet_to_json(ws,{defval:'',raw:false});
-  rawRows = json.map(normalizeRow);
-  renderTable(rawRows);
-};
+        .uploader-area {
+            border: 2px dashed var(--border-color);
+            border-radius: 5px;
+            padding: 1.5rem;
+            text-align: center;
+            margin-bottom: 1rem;
+            transition: border-color 0.3s;
+        }
 
-function renderTable(data){
-  table && table.destroy();
-  table = new Tabulator("#table",{
-    data,
-    layout:"fitColumns",
-    height:"70vh",
-    groupBy:"dept",
-    groupHeader:(v, c, g)=>`${v} (${c.length} 項)`,
-    initialSort:[{column:"dept",dir:"asc"}],
-    columns:[
-      {title:"部門", field:"dept", width:70},
-      {title:"貨號", field:"sku", width:90},
-      {title:"品名", field:"name", minWidth:150},
-      {title:"最近效期", field:"nearDate", sorter:"date", sorterParams:{format:"YYYYMMDD"}},
-      {title:"庫存", field:"stock", hozAlign:"right"},
-      {title:"6M內？", field:"sixMonthYn", width:70, formatter:cell=>cell.getValue()?'Y':'N'},
-      {title:"已補登？", field:"patchedYn", width:70, formatter:cell=>cell.getValue()?'Y':'N'},
-    ],
-    rowFormatter: row=>{
-      const d=row.getData();
-      if(highlighted && d.sixMonthYn && !d.patchedYn){
-        row.getElement().classList.add('highlight');
-      }else{
-        row.getElement().classList.remove('highlight');
-      }
-    }
-  });
-}
+        .uploader-area.highlight {
+            border-color: var(--primary-color);
+        }
 
-toggle.onclick = ()=>{ highlighted=!highlighted; table && table.redraw(true); };
-collapse.onclick = ()=>{ collapsed=!collapsed; table && (collapsed?table.getGroups().forEach(g=>g.hide()):table.getGroups().forEach(g=>g.show())); };
+        .file-info {
+            margin-top: 0.5rem;
+            font-size: 0.9rem;
+            color: #666;
+        }
 
-download.onclick = ()=>{
-  if(!table) return;
-  const ws=XLSX.utils.json_to_sheet(table.getData());
-  const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,ws,"export");
-  XLSX.writeFile(wb,"export.csv",{bookType:'csv'});
-};
-</script>
-</body></html>
+        .toolbar {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+            margin-bottom: 1rem;
+        }
+
+        button, select {
+            background-color: var(--primary-color);
+            color: white;
+            border: none;
+            border-radius: 4px;
+            padding: 0.5rem 1rem;
+            cursor: pointer;
+            font-size: 0.9rem;
+            transition: background-color 0.3s;
+        }
+
+        button:hover {
+            background-color: var(--secondary-color);
+        }
+
+        button.warning {
+            background-color: var(--warning-color);
+        }
+
+        button.warning:hover {
+            background-color: #e67e22;
+        }
+
+        button.danger {
+            background-color: var(--danger-color);
+        }
+
+        button.danger:hover {
+            background-color: #c0392b;
+        }
+
+        button.success {
+            background-color: var(--success-color);
+        }
+
+        button.success:hover {
+            background-color: #27ae60;
+        }
+
+        select {
+            background-color: white;
+            color: var(--text-color);
+            border: 1px solid var(--border-color);
+        }
+
+        .loading {
+            display: none;
+            text-align: center;
+            margin: 1rem 0;
+        }
+
+        .loading span {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background-color: var(--primary-color);
+            margin: 0 3px;
+            animation: bounce 1.4s infinite ease-in-out both;
+        }
+
+        .loading span:nth-child(1) { animation-delay: -0.32s; }
+        .loading span:nth-child(2) { animation-delay: -0.16s; }
+
+        @keyframes bounce {
+            0%, 80%, 100% { transform: scale(0); }
+            40% { transform: scale(1); }
+        }
+
+        #table {
+            margin-top: 1rem;
+            border-radius: 5px;
+            overflow: hidden;
+        }
+
+        .tabulator-row.highlight-row {
+            background-color: var(--highlight-bg) !important;
+        }
+
+        .tabulator-row.expiring-soon {
+            background-color: #ffebee !important;
+        }
+
+        .filter-section {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+            margin-bottom: 1rem;
+        }
+
+        .chip {
+            background-color: #e0e0e0;
+            color: #333;
+            padding: 5px 10px;
+            border-radius: 16px;
+            font-size: 0.8rem;
+            margin-right: 5px;
+            margin-bottom: 5px;
+            display: inline-block;
+            cursor: pointer;
+        }
+
+        .chip.active {
+            background-color: var(--primary-color);
+            color: white;
+        }
+
+        .stats {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 1rem;
+            margin-bottom: 1rem;
+        }
+
+        .stat-card {
+            flex: 1 1 200px;
+            padding: 0.75rem;
+            border-radius: 5px;
+            background-color: white;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            text-align: center;
+        }
+
+        .stat-number {
+            font-size: 1.5rem;
+            font-weight: bold;
+            margin-bottom: 0.25rem;
+            color: var(--primary-color);
+        }
+
+        .stat-label {
+            font-size: 0.8rem;
+            color: #666;
+        }
+
+        /* 手機適配 */
+        @media (max-width: 768px) {
+            .toolbar {
+                flex-direction: column;
+            }
+
+            button, select {
+                width: 100%;
+                margin-bottom: 0.5rem;
+            }
+
+            .tabulator-col {
+                text-align: left !important;
+            }
+        }
+
+        /* 字體大小調整（適合手機） */
+        @media (max-width: 480px) {
+            body {
+                font-size: 14px;
+            }
+
+            .tabulator {
+                font-size: 12px;
+            }
+        }
+
+        /* 表格樣式優化 */
+        .tabulator-row {
+            transition: background-color 0.2s;
+        }
+
+        .tabulator-row:hover {
+            background-color: #f1f8e9 !important;
+        }
+
+        /* 日期高亮樣式 */
+        .expiry-normal {
+            color: #2e7d32;
+        }
+
+        .expiry-warning {
+            color: #ff6f00;
+            font-weight: bold;
+        }
+
+        .expiry-danger {
+            color: #d32f2f;
+            font-weight: bold;
+        }
+
+        /* 輔助訊息樣式 */
+        .info-text {
+            font-size: 0.85rem;
+            color: #666;
+            margin-bottom: 1rem;
+        }
+
+        /* 引導提示樣式 */
+        .guide-tip {
+            background-color: #e3f2fd;
+            border-left: 4px solid var(--primary-color);
+            padding: 0.75rem;
+            margin-bottom: 1rem;
+            border-radius: 0 4px 4px 0;
+        }
+
+        .hidden {
+            display: none;
+        }
+
+        /* 進度條樣式 */
+        .progress-container {
+            width: 100%;
+            height: 5px;
+            background-color: #f5f5f5;
+            margin-top: 10px;
+            border-radius: 5px;
+            overflow: hidden;
+        }
+
+        .progress-bar {
+            height: 100%;
+            width: 0;
+            background-color: var(--primary-color);
+            transition: width 0.3s;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>屈臣氏效期檢查表視覺化工具</h1>
+        </header>
+
+        <div class="guide-tip">
+            請上傳效期檢查表（CSV、XLS或XLSX格式）以進行資料視覺化。
+        </div>
+
+        <div class="card">
+            <div class="uploader-area" id="uploader-area">
+                <input type="file" id="uploader" accept=".csv,.xls,.xlsx" style="display: none;">
+                <div>
+                    <button onclick="document.getElementById('uploader').click()">選擇檔案</button>
+                    <p>或將檔案拖放至此處</p>
+                </div>
+                <div class="file-info" id="file-info"></div>
+                <div class="progress-container hidden" id="progress-container">
+                    <div class="progress-bar" id="progress-bar"></div>
+                </div>
+            </div>
+        </div>
+
+        <div id="content-area" class="hidden">
+            <div class="card">
+                <div class="stats" id="stats-area">
+                    <!-- 統計數據將動態生成 -->
+                </div>
+                
+                <div class="toolbar">
+                    <button id="btn-highlight" class="warning">標示未登記效期品</button>
+                    <button id="btn-group-toggle">收合/展開部門分組</button>
+                    <select id="sort-select">
+                        <option value="">-- 排序方式 --</option>
+                        <option value="dept">依部門排序</option>
+                        <option value="nearDate">依最近效期排序</option>
+                        <option value="name">依品名排序</option>
+                        <option value="sixMonthYn">依六個月內效期品排序</option>
+                        <option value="stock">依庫存量排序</option>
+                    </select>
+                    <button id="btn-export" class="success">匯出CSV</button>
+                    <button id="btn-print">列印報表</button>
+                </div>
+
+                <div class="filter-section">
+                    <div id="dept-filter">
+                        <strong>部門篩選：</strong>
+                        <div id="dept-chips"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="table"></div>
+        </div>
+
+        <div class="loading" id="loading">
+            <span></span>
+            <span></span>
+            <span></span>
+            <p>處理中，請稍候...</p>
+        </div>
+    </div>
+
+    <script>
+        // 全局變量
+        let rawData = [];
+        let processedData = [];
+        let table = null;
+        let isHighlighted = false;
+        let isGroupCollapsed = false;
+        let activeDeptFilters = [];
+
+        // DOM 元素
+        const uploaderArea = document.getElementById('uploader-area');
+        const uploader = document.getElementById('uploader');
+        const fileInfo = document.getElementById('file-info');
+        const contentArea = document.getElementById('content-area');
+        const btnHighlight = document.getElementById('btn-highlight');
+        const btnGroupToggle = document.getElementById('btn-group-toggle');
+        const btnExport = document.getElementById('btn-export');
+        const btnPrint = document.getElementById('btn-print');
+        const sortSelect = document.getElementById('sort-select');
+        const loading = document.getElementById('loading');
+        const progressContainer = document.getElementById('progress-container');
+        const progressBar = document.getElementById('progress-bar');
+        const statsArea = document.getElementById('stats-area');
+        const deptChips = document.getElementById('dept-chips');
+
+        // 拖拽上傳功能
+        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+            uploaderArea.addEventListener(eventName, preventDefaults, false);
+        });
+
+        function preventDefaults(e) {
+            e.preventDefault();
+            e.stopPropagation();
+        }
+
+        ['dragenter', 'dragover'].forEach(eventName => {
+            uploaderArea.addEventListener(eventName, () => {
+                uploaderArea.classList.add('highlight');
+            }, false);
+        });
+
+        ['dragleave', 'drop'].forEach(eventName => {
+            uploaderArea.addEventListener(eventName, () => {
+                uploaderArea.classList.remove('highlight');
+            }, false);
+        });
+
+        uploaderArea.addEventListener('drop', e => {
+            const file = e.dataTransfer.files[0];
+            if (file) {
+                uploader.files = e.dataTransfer.files;
+                handleFile(file);
+            }
+        }, false);
+
+        uploader.addEventListener('change', e => {
+            const file = e.target.files[0];
+            if (file) {
+                handleFile(file);
+            }
+        });
+
+        // 處理上傳的文件
+        function handleFile(file) {
+            fileInfo.textContent = `檔案：${file.name}`;
+            progressContainer.classList.remove('hidden');
+            loading.style.display = 'block';
+            
+            if (file.name.toLowerCase().endsWith('.csv')) {
+                processCSV(file);
+            } else {
+                processExcel(file);
+            }
+        }
+
+        // 處理CSV文件
+        function processCSV(file) {
+            const reader = new FileReader();
+            
+            reader.onload = function(e) {
+                try {
+                    // 嘗試檢測編碼並解析CSV
+                    let content = e.target.result;
+                    
+                    // 使用 PapaParse 解析
+                    Papa.parse(content, {
+                        header: true,
+                        skipEmptyLines: true,
+                        encoding: "UTF-8",
+                        complete: function(results) {
+                            if (results.data && results.data.length > 0) {
+                                // 檢查是否有預期的欄位
+                                // 預處理：移除前幾行非表格部分
+                                let validData = results.data.filter(row => {
+                                    // 過濾掉空行和標題行
+                                    return Object.values(row).some(val => val && val.trim() !== '');
+                                });
+                                
+                                rawData = validData;
+                                processData();
+                            } else {
+                                alert("無法解析CSV檔案，請確認格式是否正確。");
+                                loading.style.display = 'none';
+                                progressContainer.classList.add('hidden');
+                            }
+                        },
+                        error: function(error) {
+                            console.error("CSV解析錯誤:", error);
+                            alert("CSV解析錯誤: " + error.message);
+                            loading.style.display = 'none';
+                            progressContainer.classList.add('hidden');
+                        }
+                    });
+                } catch (error) {
+                    console.error("文件處理錯誤:", error);
+                    alert("文件處理錯誤: " + error.message);
+                    loading.style.display = 'none';
+                    progressContainer.classList.add('hidden');
+                }
+            };
+            
+            reader.onerror = function() {
+                alert("讀取文件時發生錯誤。");
+                loading.style.display = 'none';
+                progressContainer.classList.add('hidden');
+            };
+            
+            // 讀取文件
+            reader.readAsText(file);
+        }
+
+        // 處理Excel文件
+        function processExcel(file) {
+            const reader = new FileReader();
+            
+            reader.onload = function(e) {
+                try {
+                    const data = new Uint8Array(e.target.result);
+                    const workbook = XLSX.read(data, { type: 'array' });
+                    
+                    // 獲取第一個工作表
+                    const firstSheetName = workbook.SheetNames[0];
+                    const worksheet = workbook.Sheets[firstSheetName];
+                    
+                    // 轉換為JSON
+                    let jsonData = XLSX.utils.sheet_to_json(worksheet, { 
+                        header: "A",
+                        defval: '',
+                        blankrows: false
+                    });
+                    
+                    // 找到真正的標題行（通常是包含"部門"、"貨號"、"品名"等）
+                    let headerRowIndex = -1;
+                    for (let i = 0; i < 10 && i < jsonData.length; i++) {
+                        let row = jsonData[i];
+                        let values = Object.values(row).map(v => String(v || '').trim());
+                        if (values.some(v => v.includes('部門') || v.includes('貨號') || v.includes('效期'))) {
+                            headerRowIndex = i;
+                            break;
+                        }
+                    }
+                    
+                    if (headerRowIndex === -1) {
+                        console.warn("找不到標題行，使用第一行作為標題");
+                        headerRowIndex = 0;
+                    }
+                    
+                    // 提取標題和數據
+                    const headers = jsonData[headerRowIndex];
+                    const dataRows = jsonData.slice(headerRowIndex + 1).filter(row => {
+                        // 過濾空行
+                        return Object.values(row).some(v => v && String(v).trim() !== '');
+                    });
+                    
+                    // 將欄位標題映射到數據
+                    const mappedData = dataRows.map(row => {
+                        const mappedRow = {};
+                        Object.keys(headers).forEach(key => {
+                            mappedRow[headers[key]] = row[key] || '';
+                        });
+                        return mappedRow;
+                    });
+                    
+                    rawData = mappedData;
+                    processData();
+                } catch (error) {
+                    console.error("Excel處理錯誤:", error);
+                    alert("Excel處理錯誤: " + error.message);
+                    loading.style.display = 'none';
+                    progressContainer.classList.add('hidden');
+                }
+            };
+            
+            reader.onerror = function() {
+                alert("讀取文件時發生錯誤。");
+                loading.style.display = 'none';
+                progressContainer.classList.add('hidden');
+            };
+            
+            // 讀取文件
+            reader.readAsArrayBuffer(file);
+        }
+
+        // 處理數據
+        function processData() {
+            try {
+                if (!rawData || rawData.length === 0) {
+                    throw new Error("無有效數據");
+                }
+                
+                // 更新進度
+                progressBar.style.width = '30%';
+                
+                // 將原始數據轉換為標準格式
+                processedData = rawData.map(normalizeRow).filter(row => {
+                    // 過濾掉不包含必要欄位的行
+                    return row.dept && row.name;
+                });
+                
+                if (processedData.length === 0) {
+                    throw new Error("處理後無有效數據");
+                }
+                
+                // 更新進度
+                progressBar.style.width = '70%';
+                
+                // 更新界面
+                updateUI();
+                
+                // 完成
+                progressBar.style.width = '100%';
+                setTimeout(() => {
+                    progressContainer.classList.add('hidden');
+                    loading.style.display = 'none';
+                    contentArea.classList.remove('hidden');
+                }, 500);
+            } catch (error) {
+                console.error("數據處理錯誤:", error);
+                alert("數據處理錯誤: " + error.message);
+                loading.style.display = 'none';
+                progressContainer.classList.add('hidden');
+            }
+        }
+
+        // 標準化行數據
+        function normalizeRow(row) {
+            // 對應字段別名
+            const fieldMap = {
+                dept: ['部門', '部門別', '門市部門'],
+                sku: ['貨號', '商品編號', '品號'],
+                name: ['品名', '商品名稱', '商品名'],
+                nearDate: ['WK', '最近效期日', '最近效期', '最短效期'],
+                farDate: ['WK', '最遠效期日', '最遠效期', '最長效期'],
+                stock: ['庫存量', '庫存', '數量'],
+                displayCode: ['陳列圖', '陳列圖號', '陳列位置', '陳列編號'],
+                returnType: ['退貨型態', '退貨類型', '退貨方式', '退貨狀態'],
+                sixMonthYn: ['六個月內', '6M內', '六個月內效期品'],
+     
