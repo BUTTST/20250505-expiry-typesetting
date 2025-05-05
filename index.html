@@ -1,96 +1,108 @@
-<!DOCTYPE html>
-<html lang="zh-TW">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>效期檢查表 Viewer</title>
-  <!-- 1⃣ 直接拉 CDN -->
-  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-  <link  href="https://cdn.jsdelivr.net/npm/tabulator-tables@5.5.0/dist/css/tabulator.min.css" rel="stylesheet">
-  <script src="https://cdn.jsdelivr.net/npm/tabulator-tables@5.5.0/dist/js/tabulator.min.js"></script>
-  <style>
-    body{font-family: system-ui, sans-serif;margin:1rem;}
-    #uploader{margin-bottom:1rem;}
-    .highlight{background: #ffe58f;}       /* 高亮六個月內且未補登 */
-  </style>
-</head>
-<body>
-  <input id="uploader" type="file" accept=".xlsx,.xls,.csv" />
-  <button id="toggle">標示/取消標示</button>
-  <button id="download">匯出 CSV</button>
-  <div id="table"></div>
+<!DOCTYPE html><html lang="zh-TW"><head>
+<meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>效期檢查表 Viewer</title>
+
+<!-- CDN -->
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<link   href="https://cdn.jsdelivr.net/npm/tabulator-tables@5.5.0/dist/css/tabulator.min.css" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/tabulator-tables@5.5.0/dist/js/tabulator.min.js"></script>
+
+<style>
+body{font-family:system-ui,sans-serif;margin:1rem}
+#uploader{margin-bottom:.75rem}
+.highlight{background:#ffe58f}
+button{margin-right:.5rem}
+</style>
+</head><body>
+
+<input id="uploader" type="file" accept=".xlsx,.xls,.csv">
+<button id="toggle">標示/取消標示</button>
+<button id="collapse">收合/展開部門</button>
+<button id="download">匯出 CSV</button>
+<div id="table"></div>
 
 <script>
-let originalData = [];   // 保留原順序
-let table = null;
-let highlighted = false;
+let rawRows   = [], table=null, highlighted=false, collapsed=false;
 
-document.getElementById('uploader').addEventListener('change', async (e)=>{
-  const file = e.target.files[0];
-  if(!file) return;
+/* 1⃣  將各種可能的標題 → 統一鍵名 */
+const aliasMap = {
+  dept      : ['部門','部門別','門市部門'],
+  sku       : ['貨號','商品編號','品號'],
+  name      : ['品名','商品名稱','品項'],
+  nearDate  : ['最近效期','最近效期日'],
+  farDate   : ['最遠效期','最遠效期日'],
+  stock     : ['庫存量','庫存','數量'],
+  displayCode:['陳列圖','陳列位置'],
+  returnType:['退貨型態','退貨狀態'],
+  sixMonthYn:['六個月內','6M內','六個月內效期品'],
+  patchedYn :['已用盤點機','已補登','已用盤點機補登記']
+};
 
-  const data = await file.arrayBuffer();
-  const workbook = XLSX.read(data, {type:'array'});
-  const ws      = workbook.Sheets[workbook.SheetNames[0]];
-  const json    = XLSX.utils.sheet_to_json(ws, {defval:''});
-  // 👉 在這裡把中文欄位名轉成程式欄位
-  originalData = json.map(r=>({
-     dept:          r['部門'],
-     sku:           r['貨號'],
-     name:          r['品名'],
-     nearDate:      r['WK9…最近效期日'],
-     farDate:       r['WK9…最遠效期日'],
-     stock:         +r['庫存量']||0,
-     displayCode:   r['陳列圖'],
-     returnType:    r['退貨型態'],
-     sixMonthYn:    r['六個月內效期品？(Y/N)']==='Y',
-     patchedYn:     r['已用盤點機補登記？(Y/N)']==='Y'
-  }));
+function normalizeRow(r){
+  const o={};
+  for(const [std, aliases] of Object.entries(aliasMap)){
+    const key = Object.keys(r).find(k=>aliases.some(a=>k.includes(a)));
+    o[std] = std==='stock' ? (+r[key]||0) : r[key] ?? '';
+  }
+  // 六個月內？若檔案沒有該欄，直接用 nearDate 計算
+  if(o.sixMonthYn===''){
+    if(o.nearDate){
+      const n = new Date(o.nearDate), today=new Date();
+      o.sixMonthYn = (n - today)/(1000*3600*24) <= 180;
+    }
+  }else{
+    o.sixMonthYn = (''+o.sixMonthYn).trim().toUpperCase()==='Y';
+  }
+  o.patchedYn  = (''+o.patchedYn).trim().toUpperCase()==='Y';
+  return o;
+}
 
-  renderTable(originalData);
-});
+uploader.onchange = async e=>{
+  const f=e.target.files[0]; if(!f) return;
+  const wb = XLSX.read(await f.arrayBuffer(),{type:'array'});
+  const ws = wb.Sheets[wb.SheetNames[0]];
+  const json = XLSX.utils.sheet_to_json(ws,{defval:'',raw:false});
+  rawRows = json.map(normalizeRow);
+  renderTable(rawRows);
+};
 
 function renderTable(data){
-  if(table){table.destroy();}
-  table = new Tabulator("#table", {
+  table && table.destroy();
+  table = new Tabulator("#table",{
     data,
     layout:"fitColumns",
     height:"70vh",
+    groupBy:"dept",
+    groupHeader:(v, c, g)=>`${v} (${c.length} 項)`,
+    initialSort:[{column:"dept",dir:"asc"}],
     columns:[
       {title:"部門", field:"dept", width:70},
       {title:"貨號", field:"sku", width:90},
       {title:"品名", field:"name", minWidth:150},
       {title:"最近效期", field:"nearDate", sorter:"date", sorterParams:{format:"YYYYMMDD"}},
       {title:"庫存", field:"stock", hozAlign:"right"},
-      {title:"6M內？", field:"sixMonthYn", width:70, formatter: yNFormatter},
-      {title:"已補登？", field:"patchedYn", width:70, formatter: yNFormatter},
+      {title:"6M內？", field:"sixMonthYn", width:70, formatter:cell=>cell.getValue()?'Y':'N'},
+      {title:"已補登？", field:"patchedYn", width:70, formatter:cell=>cell.getValue()?'Y':'N'},
     ],
     rowFormatter: row=>{
-        const d = row.getData();
-        if(highlighted && d.sixMonthYn && !d.patchedYn){
-          row.getElement().classList.add('highlight');
-        }else{
-          row.getElement().classList.remove('highlight');
-        }
+      const d=row.getData();
+      if(highlighted && d.sixMonthYn && !d.patchedYn){
+        row.getElement().classList.add('highlight');
+      }else{
+        row.getElement().classList.remove('highlight');
+      }
     }
   });
 }
 
-function yNFormatter(cell){ return cell.getValue() ? 'Y' : 'N'; }
+toggle.onclick = ()=>{ highlighted=!highlighted; table && table.redraw(true); };
+collapse.onclick = ()=>{ collapsed=!collapsed; table && (collapsed?table.getGroups().forEach(g=>g.hide()):table.getGroups().forEach(g=>g.show())); };
 
-document.getElementById('toggle').onclick=()=>{
-  highlighted = !highlighted;
-  if(table) table.redraw(true);
-};
-
-document.getElementById('download').onclick=()=>{
+download.onclick = ()=>{
   if(!table) return;
-  const rows = table.getData();               // 目前顯示順序
-  const ws   = XLSX.utils.json_to_sheet(rows);
-  const wb   = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, "export");
-  XLSX.writeFile(wb, "export.csv", {bookType:'csv'});
+  const ws=XLSX.utils.json_to_sheet(table.getData());
+  const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,ws,"export");
+  XLSX.writeFile(wb,"export.csv",{bookType:'csv'});
 };
 </script>
-</body>
-</html>
+</body></html>
