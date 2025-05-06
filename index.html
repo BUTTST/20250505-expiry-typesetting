@@ -282,4 +282,267 @@
                 if (processedCount === 0) throw new Error("數據標準化後無有效行。");
                 debug("開始自動排序...");
                 processedData.sort((a, b) => {
-                
+                    const deptCompare = (a.dept || '').localeCompare(b.dept || ''); if (deptCompare !== 0) return deptCompare;
+                    const codeA = parseDisplayCodeForSort(a.displayCode); const codeB = parseDisplayCodeForSort(b.displayCode);
+                    const prefixLetterA = codeA.prefix + codeA.letter; const prefixLetterB = codeB.prefix + codeB.letter;
+                    const prefixCompare = prefixLetterA.localeCompare(prefixLetterB); if (prefixCompare !== 0) return prefixCompare;
+                    if (codeA.layer !== codeB.layer) return codeA.layer - codeB.layer;
+                    if (codeA.position !== codeB.position) return codeA.position - codeB.position;
+                    return 0;
+                });
+                debug("自動排序完成。");
+                updateUI(); loading.classList.add('hidden'); contentArea.classList.remove('hidden');
+                debug("數據處理和 UI 更新完成。");
+            } catch (error) { showError(error.message || "數據處理未知錯誤", error); }
+        }
+        function normalizeRow(row, rowIndex) {
+            const fieldMap = { dept: ['部門'], sku: ['貨號'], name: ['品名'], nearDate: ['最近效期'], stock: ['庫存'], displayCode: ['陳列圖'] };
+            const normalizedRow = { id: rowIndex, dept: '', sku: '', name: '', nearDate: null, stock: 0, displayCode: '', marked: 'N', daysToExpiry: null, expiryStatus: null };
+            const rowKeys = Object.keys(row);
+            for (const standardField in fieldMap) {
+                const aliases = fieldMap[standardField]; let foundValueStr = '';
+                for (const alias of aliases) {
+                    const matchingKey = rowKeys.find(key => key.trim().toLowerCase().includes(String(alias).toLowerCase()));
+                    if (matchingKey && row[matchingKey] !== undefined && row[matchingKey] !== null && String(row[matchingKey]).trim() !== '') {
+                        foundValueStr = String(row[matchingKey]).trim(); break;
+                    }
+                }
+                if (foundValueStr) {
+                    try {
+                        if (standardField === 'nearDate') normalizedRow[standardField] = parseDate(foundValueStr);
+                        else if (standardField === 'stock') normalizedRow[standardField] = parseInt(foundValueStr.replace(/[^\d.-]/g, '')) || 0;
+                        else normalizedRow[standardField] = foundValueStr;
+                    } catch (e) { if (standardField === 'nearDate') normalizedRow[standardField] = null; }
+                }
+            }
+            if (normalizedRow.dept) normalizedRow.dept = String(normalizedRow.dept).padStart(2, '0');
+            if (normalizedRow.name) normalizedRow.name = normalizedRow.name.replace(/\s+/g, ' ');
+            if (normalizedRow.displayCode) normalizedRow.displayCode = normalizedRow.displayCode.replace(/\s+/g, '');
+            if (normalizedRow.nearDate && typeof normalizedRow.nearDate === 'string' && /^\d{4}\/\d{2}\/\d{2}$/.test(normalizedRow.nearDate)) {
+                try {
+                    const [y, m, d] = normalizedRow.nearDate.split('/').map(Number); const expiry = new Date(y, m - 1, d); const today = new Date(); today.setHours(0,0,0,0);
+                    if (!isNaN(expiry.getTime())) {
+                        const diff = Math.ceil((expiry - today) / (1000 * 60 * 60 * 24));
+                        normalizedRow.daysToExpiry = diff;
+                        if (diff <= 30) normalizedRow.expiryStatus = 'danger'; else if (diff <= 90) normalizedRow.expiryStatus = 'warning';
+                    }
+                } catch (e) { /* Ignore date calculation errors */ }
+            }
+            if (!normalizedRow.dept || !normalizedRow.name) return null;
+            return normalizedRow;
+        }
+
+        function renderTable() {
+            if (!tableBody) { showError("表格 tbody 元素未找到。"); return; }
+            tableBody.innerHTML = ''; debug(`開始渲染 ${processedData.length} 筆資料到表格...`);
+            if (processedData.length === 0) { noDataMessage.classList.remove('hidden'); return; }
+            else { noDataMessage.classList.add('hidden'); }
+
+            const fragment = document.createDocumentFragment();
+            let currentDept = null; let useDarkShade = false; let colors = {};
+
+            processedData.forEach(item => {
+                if (item.dept !== currentDept) {
+                    currentDept = item.dept; colors = getDeptColorClasses(currentDept); useDarkShade = false;
+                }
+                const tr = document.createElement('tr');
+                tr.dataset.id = item.id; tr.dataset.dept = item.dept; tr.dataset.marked = item.marked;
+                const bgColorClass = useDarkShade ? colors.dark : colors.light;
+                tr.classList.add(bgColorClass);
+
+                // *** Corrected innerHTML structure ***
+                tr.innerHTML = `
+                    <td class="col-dept">${item.dept || ''}</td>
+                    <td>${item.sku || ''}</td>
+                    <td class="col-name">${item.name || ''}</td>
+                    <td class="${item.expiryStatus ? 'expiry-' + item.expiryStatus : ''}">${item.nearDate || 'N/A'}</td>
+                    <td class="col-display-code">${item.displayCode || ''}</td>
+                    <td class="col-stock">${item.stock !== undefined ? item.stock : ''}</td>
+                    <td class="col-mark">
+                        <span class="mark-toggle ${item.marked === 'Y' ? 'yes' : 'no'}" data-row-id="${item.id}">
+                            ${item.marked}
+                        </span>
+                    </td>
+                `;
+                fragment.appendChild(tr);
+                useDarkShade = !useDarkShade;
+            });
+            tableBody.appendChild(fragment);
+            applyFilter(currentFilter.type, currentFilter.value);
+            debug("表格渲染完成。");
+        }
+
+        function toggleMarkedStatus(rowId) {
+            const itemIndex = processedData.findIndex(item => String(item.id) === String(rowId));
+            if (itemIndex > -1) {
+                const item = processedData[itemIndex]; item.marked = item.marked === 'Y' ? 'N' : 'Y';
+                debug(`標記切換 (資料): ID ${item.id}, 新狀態: ${item.marked}`);
+                const rowElement = tableBody.querySelector(`tr[data-id='${rowId}']`);
+                if (rowElement) {
+                    rowElement.dataset.marked = item.marked;
+                    const markToggle = rowElement.querySelector('.mark-toggle');
+                    if (markToggle) {
+                        markToggle.textContent = item.marked;
+                        markToggle.classList.toggle('yes', item.marked === 'Y');
+                        markToggle.classList.toggle('no', item.marked === 'N');
+                    }
+                }
+                 if (currentFilter.type === 'marked') { applyFilter('marked', 'Y'); }
+            } else { debug(`錯誤：找不到 ID 為 ${rowId} 的資料項來切換標記。`); }
+        }
+
+        function updateUI() {
+            if (!processedData || processedData.length === 0) {
+                debug("沒有處理好的數據可供顯示。"); contentArea.classList.add('hidden');
+                tableBody.innerHTML = ''; noDataMessage.classList.remove('hidden'); return;
+            }
+            contentArea.classList.remove('hidden');
+            renderTable(); createFilterButtons(); setupButtonEvents();
+        }
+
+        function createFilterButtons() {
+            filterButtonsParentContainer.innerHTML = '';
+            const deptsInData = {};
+            processedData.forEach(item => { if (item.dept) { deptsInData[item.dept] = (deptsInData[item.dept] || 0) + 1; }});
+            const sortedDepts = Object.keys(deptsInData).sort();
+            const firstLineContainer = document.createElement('div');
+            firstLineContainer.classList.add('flex', 'flex-wrap', 'gap-1.5', 'mb-1.5');
+            firstLineContainer.appendChild(createButtonElement({ type: 'all', value: 'all', label: '全部顯示' }));
+            for (const category in CATEGORIES) {
+                const categoryDepts = CATEGORIES[category];
+                if (processedData.some(item => categoryDepts.includes(item.dept))) {
+                    const count = processedData.filter(item => categoryDepts.includes(item.dept)).length;
+                    firstLineContainer.appendChild(createButtonElement({ type: 'category', value: category, label: `${category} (${count})` }));
+                }
+            }
+            filterButtonsParentContainer.appendChild(firstLineContainer);
+            if (sortedDepts.length > 0) {
+                const secondLineContainer = document.createElement('div');
+                secondLineContainer.classList.add('flex', 'flex-wrap', 'gap-1.5');
+                sortedDepts.forEach(dept => {
+                    const colors = getDeptColorClasses(dept);
+                    const button = createButtonElement({ type: 'dept', value: dept, label: `${dept} (${deptsInData[dept]})` });
+                    button.classList.remove('bg-gray-200');
+                    button.classList.add(colors.btn, 'dept-btn-colored'); // Apply color class
+                    secondLineContainer.appendChild(button);
+                });
+                if (secondLineContainer.hasChildNodes()) filterButtonsParentContainer.appendChild(secondLineContainer);
+            }
+        }
+
+        function createButtonElement(filterConfig) {
+            const button = document.createElement('button');
+            button.classList.add('filter-btn'); button.textContent = filterConfig.label;
+            button.dataset.type = filterConfig.type; button.dataset.value = filterConfig.value;
+            if (filterConfig.type === currentFilter.type && filterConfig.value === currentFilter.value) {
+                 button.classList.add('active');
+                 // If it's a colored button, ensure the active state doesn't override the color badly
+                 if(button.classList.contains('dept-btn-colored')) {
+                    // The .dept-btn-colored.active CSS rule handles this
+                 }
+            }
+            button.addEventListener('click', handleFilterClick);
+            return button;
+        }
+
+        function handleFilterClick(event) {
+            const button = event.target.closest('.filter-btn'); if (!button) return;
+            applyFilter(button.dataset.type, button.dataset.value);
+            updateActiveButton(button);
+        }
+
+        function applyFilter(type, value) {
+            currentFilter = { type, value };
+            debug(`套用篩選 (視覺): 類型=${type}, 值=${value}`);
+            const rows = tableBody.querySelectorAll('tr'); let visibleCount = 0;
+            rows.forEach(row => {
+                let show = false; const rowDept = row.dataset.dept; const rowMarked = row.dataset.marked;
+                if (type === 'all') { show = true; }
+                else if (type === 'dept') { show = rowDept === value; }
+                else if (type === 'category') { const catDepts = CATEGORIES[value]; show = catDepts && catDepts.includes(rowDept); }
+                else if (type === 'marked') { show = rowMarked === 'Y'; }
+                if (show) { row.classList.remove('row-hidden'); visibleCount++; }
+                else { row.classList.add('row-hidden'); }
+            });
+            if (type === 'marked') {
+                 btnShowMarked.classList.add('active'); markedBtnText.textContent = "顯示全部";
+            } else {
+                 btnShowMarked.classList.remove('active'); markedBtnText.textContent = "僅顯示標記";
+            }
+            if (visibleCount === 0 && processedData.length > 0) {
+                 noDataMessage.textContent = "沒有符合篩選條件的數據"; noDataMessage.classList.remove('hidden');
+            } else if (processedData.length === 0) {
+                 noDataMessage.textContent = "沒有數據可顯示"; noDataMessage.classList.remove('hidden');
+            } else { noDataMessage.classList.add('hidden'); }
+            debug(`篩選應用完成，可見行數: ${visibleCount}`);
+        }
+
+        function updateActiveButton(activeButton) {
+            filterButtonsParentContainer.querySelectorAll('.filter-btn').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            if (activeButton) {
+                activeButton.classList.add('active');
+            }
+        }
+
+        function setupButtonEvents() {
+            debug("Setting up button events...");
+            tableBody.onclick = function(event) {
+                const target = event.target;
+                if (target && target.classList.contains('mark-toggle')) {
+                    const rowId = target.dataset.rowId; if (rowId !== undefined) { toggleMarkedStatus(rowId); }
+                }
+            };
+            btnShowMarked.onclick = () => {
+                if (btnShowMarked.classList.contains('active')) {
+                    applyFilter(filterBeforeMarked.type, filterBeforeMarked.value);
+                    updateActiveButton(filterButtonsParentContainer.querySelector(`.filter-btn[data-type='${filterBeforeMarked.type}'][data-value='${filterBeforeMarked.value}']`));
+                } else {
+                    filterBeforeMarked = { ...currentFilter }; applyFilter('marked', 'Y'); updateActiveButton(null);
+                }
+            };
+            btnResetMark.onclick = () => {
+                if (!processedData || processedData.length === 0) return; debug("開始重置所有標記..."); let changed = false;
+                processedData.forEach(item => { if (item.marked === 'Y') { item.marked = 'N'; changed = true; } });
+                if (changed) {
+                    tableBody.querySelectorAll('tr').forEach(row => {
+                        const rowId = row.dataset.id; const itemIndex = processedData.findIndex(item => String(item.id) === rowId);
+                        if (itemIndex > -1 && processedData[itemIndex].marked === 'N') {
+                             row.dataset.marked = 'N'; const markToggle = row.querySelector('.mark-toggle');
+                             if (markToggle) { markToggle.textContent = 'N'; markToggle.classList.remove('yes'); markToggle.classList.add('no'); }
+                        }
+                    });
+                    applyFilter(currentFilter.type, currentFilter.value);
+                }
+                debug("所有標記已重置為 'N'。");
+            };
+            debug("Button events set up.");
+        }
+
+        // --- Initialization & Sample Data ---
+        uploader.addEventListener('change', e => { if (e.target.files[0]) handleFile(e.target.files[0]); uploader.value = ''; });
+        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(evt => { uploaderArea.addEventListener(evt, e => {e.preventDefault();e.stopPropagation();}, false); document.body.addEventListener(evt, e => {e.preventDefault();e.stopPropagation();}, false); });
+        ['dragenter', 'dragover'].forEach(evt => uploaderArea.addEventListener(evt, () => uploaderArea.classList.add('highlight'), false));
+        ['dragleave', 'drop'].forEach(evt => uploaderArea.addEventListener(evt, () => uploaderArea.classList.remove('highlight'), false));
+        uploaderArea.addEventListener('drop', e => { if (e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]); }, false);
+
+        loadSample.addEventListener('click', function() {
+            hideError(); debugPanel.textContent = ''; debug("開始載入範例數據 (V5.3)...");
+            loading.classList.remove('hidden'); contentArea.classList.add('hidden'); tableBody.innerHTML = ''; noDataMessage.classList.add('hidden');
+            fileMetadata = { title: "範例效期補查", week: "週別：範例", time: `載入時間：${new Date().toLocaleTimeString('zh-TW')}` };
+            fileDetails.innerHTML = `<p><strong>標題：</strong>${fileMetadata.title}</p><p><strong>${fileMetadata.week}</strong></p><p><strong>${fileMetadata.time}</strong></p>`;
+            fileInfoDisplay.classList.remove('hidden'); fileInfo.textContent = '檔案：範例數據.xlsx';
+            rawData = [ /* Sample data from V5.0 */
+                {"部門": "28", "貨號": "135543", "品名": "比菲多軟糖-葡萄", "最近效期": "2025/12/26", "庫存": 3, "陳列圖": "28A02"}, {"部門": "29", "貨號": "146344", "品名": "77脆可穀麥巧克力", "最近效期": "2025/07/15", "庫存": 32, "陳列圖": "28A04"}, {"部門": "05", "貨號": "177493", "品名": "活沛多 OPC活妍葡萄籽膠囊 60粒", "最近效期": "2026/01/15", "庫存": 3, "陳列圖": "04E03"}, {"部門": "04", "貨號": "177498", "品名": "活沛多 蜂王乳芝麻美E錠 60錠", "最近效期": "2025/08/01", "庫存": 5, "陳列圖": "04G02"}, {"部門": "03", "貨號": "208625", "品名": "活沛多 啾咪QQ膠原軟糖-葡萄", "最近效期": "2026/09/01", "庫存": 10, "陳列圖": "04E03"}, {"部門": "02", "貨號": "999999", "品名": "測試藥品A (即期)", "最近效期": "2025/05/20", "庫存": 8, "陳列圖": "02A01"}, {"部門": "07", "貨號": "888888", "品名": "測試藥品B (警告期)", "最近效期": "2025/06/28", "庫存": 15, "陳列圖": "07B03"}, {"部門": "05", "貨號": "777777", "品名": "日期錯誤測試", "最近效期": "無效日期", "庫存": 3, "陳列圖": "TEST3"}, {"部門": "28", "貨號": "111111", "品名": "另一個零食 (長效期)", "最近效期": "2027/10/10", "庫存": 20, "陳列圖": "28B05"}, {"部門": "28", "貨號": "222222", "品名": "葡萄口味POCKY", "最近效期": "2025/11/30", "庫存": 50, "陳列圖": "28C01"}, {"部門": "04", "貨號": "333333", "品名": "維他命C發泡錠", "最近效期": "2026/03/10", "庫存": 12, "陳列圖": "04D05"}, {"部門": "04", "貨號": "444444", "品名": "益生菌粉包", "最近效期": "2025/07/01", "庫存": 8, "陳列圖": "04F01"}, {"部門": "05", "貨號": "555555", "品名": "鈣片補充錠", "最近效期": "2026/05/18", "庫存": 25, "陳列圖": "05A09"}, {"部門": "29", "貨號": "666666", "品名": "綜合堅果隨手包", "最近效期": "2025/10/22", "庫存": 18, "陳列圖": "29B03"}, {"部門": "03", "貨號": "777778", "品名": "兒童魚油軟糖", "最近效期": "2026/02/14", "庫存": 30, "陳列圖": "03C07"}, {"部門": "02", "貨號": "888889", "品名": "感冒藥水", "最近效期": "2025/09/30", "庫存": 6, "陳列圖": "02B02"}, {"部門": "07", "貨號": "999990", "品名": "維生素B群", "最近效期": "2027/01/25", "庫存": 40, "陳列圖": "07A06"}, {"部門": "28", "貨號": "101010", "品名": "巧克力棒分享包", "最近效期": "2025/08/19", "庫存": 22, "陳列圖": "28D08"}, {"部門": "28", "貨號": "121212", "品名": "海苔捲", "最近效期": "2026/04/05", "庫存": 11, "陳列圖": "28E05"}, {"部門": "04", "貨號": "131313", "品名": "膠原蛋白粉", "最近效期": "2026/11/11", "庫存": 16, "陳列圖": "04H04"}, {"部門": "05", "貨號": "141414", "品名": "葉黃素膠囊", "最近效期": "2027/03/17", "庫存": 28, "陳列圖": "05B11"}, {"部門": "29", "貨號": "151515", "品名": "蘇打餅乾", "最近效期": "2025/06/01", "庫存": 60, "陳列圖": "29A01"}, {"部門": "03", "貨號": "161616", "品名": "兒童維他命軟糖", "最近效期": "2026/08/22", "庫存": 13, "陳列圖": "03D09"}, {"部門": "02", "貨號": "171717", "品名": "止痛藥錠", "最近效期": "2026/12/31", "庫存": 9, "陳列圖": "02C04"}, {"部門": "07", "貨號": "181818", "品名": "綜合維他命", "最近效期": "2027/05/05", "庫存": 35, "陳列圖": "07C01"}, {"部門": "28", "貨號": "191919", "品名": "洋芋片", "最近效期": "2025/10/01", "庫存": 45, "陳列圖": "28F03"}, {"部門": "04", "貨號": "202020", "品名": "蔓越莓錠", "最近效期": "2026/07/07", "庫存": 19, "陳列圖": "04I02"}, {"部門": "05", "貨號": "212121", "品名": "葡萄糖胺飲", "最近效期": "2025/12/12", "庫存": 7, "陳列圖": "05C15"}, {"部門": "29", "貨號": "232323", "品名": "能量棒", "最近效期": "2026/01/30", "庫存": 21, "陳列圖": "29C06"}, {"部門": "03", "貨號": "242424", "品名": "益生菌軟糖", "最近效期": "2026/10/15", "庫存": 24, "陳列圖": "03E11"}, {"部門": "02", "貨號": "252525", "品名": "胃藥錠", "最近效期": "2027/02/28", "庫存": 14, "陳列圖": "02D06"}, {"部門": "07", "貨號": "262626", "品名": "鐵劑補充錠", "最近效期": "2026/06/16", "庫存": 26, "陳列圖": "07D03"}, {"部門": "28", "貨號": "272727", "品名": "玉米濃湯口味餅乾", "最近效期": "2025/11/01", "庫存": 33, "陳列圖": "28G07"}, {"部門": "04", "貨號": "282828", "品名": "Q10膠囊", "最近效期": "2027/04/20", "庫存": 17, "陳列圖": "04J08"}, {"部門": "05", "貨號": "292929", "品名": "成人奶粉", "最近效期": "2026/03/25", "庫存": 10, "陳列圖": "05D19"}, {"部門": "29", "貨號": "303030", "品名": "黑巧克力", "最近效期": "2026/09/09", "庫存": 29, "陳列圖": "29D10"}, {"部門": "03", "貨號": "313131", "品名": "兒童鈣片", "最近效期": "2027/01/01", "庫存": 23, "陳列圖": "03F13"},
+            ];
+            setTimeout(() => { processAndNormalizeData(); }, 100);
+        });
+
+        document.addEventListener('DOMContentLoaded', () => {
+            debug("效期檢查表處理工具 V5.3 初始化完成。");
+        });
+    </script>
+</body>
+</html>
+
