@@ -2,173 +2,99 @@
 <html lang="zh-TW">
 <head>
     <meta charset="utf-8"/>
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>屈臣氏效期檢查表處理工具 (優化版 v3)</title>
-
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>效期檢查表處理工具 V5.3 (庫存修正、介面微調)</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/tabulator-tables/5.5.0/css/tabulator_bootstrap5.min.css" rel="stylesheet">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/tabulator-tables/5.5.0/js/tabulator.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
-
     <style>
-        /* 基本樣式 (Tailwind 已提供大部分) */
         body {
             font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-            overscroll-behavior-y: none; /* 防止下拉刷新頁面 */
+            overscroll-behavior-y: none; margin: 0; padding: 0; background-color: #f3f4f6;
         }
-        /* Tabulator 的一些微調 */
-        .tabulator {
-            border-radius: 0.375rem; /* rounded-md */
-            overflow: hidden;
-            border: 1px solid #e5e7eb; /* border-gray-200 */
-            /* 設定最大高度，防止在大螢幕上過高 */
-            max-height: 75vh;
-             /* 讓表格本身可以滾動 */
-            overflow-y: auto;
+        /* Basic Table Styles */
+        .data-table {
+            width: 100%;
+            border-collapse: collapse;
+            background-color: white;
+            /* table-layout: fixed; */ /* Let browser auto-adjust based on content */
         }
-        .tabulator .tabulator-header {
-            background-color: #f9fafb; /* bg-gray-50 */
-            border-bottom: 1px solid #e5e7eb; /* border-gray-200 */
-            font-weight: 600; /* font-semibold */
-            position: sticky; /* 固定表頭 */
-            top: 0;
-            z-index: 10;
+        .data-table th, .data-table td {
+            border: 1px solid #e5e7eb; padding: 0.5rem 0.4rem; text-align: left;
+            font-size: 0.75rem; vertical-align: middle;
+            word-wrap: break-word;
         }
-        .tabulator .tabulator-row {
-            border-bottom: 1px solid #f3f4f6; /* border-gray-100 */
+        .data-table th {
+            background-color: #f9fafb; font-weight: 600; text-align: center;
+            position: sticky; top: 0; z-index: 5;
+            white-space: nowrap; /* Prevent header text wrapping */
         }
-        .tabulator .tabulator-row:hover {
-            background-color: #f9fafb; /* hover:bg-gray-50 */
-        }
-        .tabulator-col-title {
-             padding: 0.5rem 0.5rem; /* 減少內邊距 py-2 px-2 */
-             text-align: center; /* 標題居中 */
-        }
-        .tabulator-cell {
-            padding: 0.5rem 0.5rem; /* 減少內邊距 py-2 px-2 */
-            border-right: none;
-            white-space: nowrap; /* 防止單元格內容換行 */
-            overflow: hidden;
-            text-overflow: ellipsis; /* 超出顯示省略號 */
-        }
-         /* 針對品名列允許稍寬 */
-        .tabulator-cell[tabulator-field="name"] {
-            white-space: normal; /* 允許品名換行 */
-            min-width: 120px; /* 給品名一個最小寬度 */
-        }
-        .tabulator-group-header {
-            background-color: #eef2ff; /* bg-indigo-100 */
-            color: #4338ca; /* text-indigo-800 */
-            font-weight: 600;
-            padding: 0.5rem 1rem;
-            border-bottom: 1px solid #c7d2fe; /* border-indigo-300 */
-            position: sticky; /* 固定分組標頭 */
-            top: 38px; /* 假設表頭高度約 38px */
-            z-index: 9;
-        }
-         /* 分頁器樣式 */
-        .tabulator .tabulator-footer {
-            background-color: #f9fafb;
-            padding: 0.5rem;
-            border-top: 1px solid #e5e7eb;
-            position: sticky; /* 固定分頁器 */
-            bottom: 0;
-            z-index: 10;
-        }
-        .tabulator .tabulator-paginator label {
-            font-weight: normal;
-            font-size: 0.875rem; /* text-sm */
-        }
-        .tabulator .tabulator-page {
-            margin: 0 2px;
-            padding: 4px 8px;
-            border-radius: 0.25rem; /* rounded */
-            font-size: 0.875rem;
-        }
-        .tabulator .tabulator-page.active {
-            background-color: #3b82f6; /* bg-blue-500 */
-            color: white;
-        }
-        .tabulator .tabulator-page[disabled] {
-            opacity: 0.5;
-            cursor: not-allowed;
-        }
+        .data-table tbody tr:hover { background-color: rgba(209, 213, 219, 0.6); }
+        .data-table td.col-dept, .data-table td.col-stock, .data-table td.col-mark { text-align: center; }
+        .data-table td.col-name { white-space: normal; }
+        .data-table td.col-display-code { white-space: normal; word-break: break-all; line-height: 1.3; }
+        .row-hidden { display: none; }
 
-        /* 自定義標記樣式 */
-        .mark-yes, .mark-no {
-            display: inline-block;
-            padding: 0.125rem 0.5rem; /* py-0.5 px-2 */
-            border-radius: 9999px; /* rounded-full */
-            font-size: 0.75rem; /* text-xs */
-            font-weight: 600; /* font-semibold */
-            cursor: pointer;
-            color: white;
-            transition: background-color 0.2s ease;
+        /* Mark button styles */
+        .mark-toggle {
+            display: inline-block; padding: 0.1rem 0.5rem; border-radius: 9999px;
+            font-size: 0.7rem; font-weight: 600; cursor: pointer; color: white;
+            transition: background-color 0.2s ease, transform 0.1s ease; /* Added transform transition */
+            vertical-align: middle;
         }
-        .mark-yes { background-color: #10b981; } /* bg-emerald-500 */
-        .mark-no { background-color: #ef4444; } /* bg-red-500 */
-        .mark-yes:hover { background-color: #059669; } /* hover:bg-emerald-600 */
-        .mark-no:hover { background-color: #dc2626; } /* hover:bg-red-600 */
+        .mark-toggle:active {
+             transform: scale(0.95); /* Add click feedback */
+        }
+        .mark-toggle.yes { background-color: #10b981; }
+        .mark-toggle.no { background-color: #ef4444; }
+        .mark-toggle.yes:hover { background-color: #059669; }
+        .mark-toggle.no:hover { background-color: #dc2626; }
 
-        /* 臨近效期樣式 */
+        /* Expiry status colors */
         .expiry-danger { color: #dc2626; font-weight: 700; }
         .expiry-warning { color: #f59e0b; font-weight: 600; }
 
-        /* 拖放區域 */
         .uploader-area.highlight { border-color: #3b82f6; background-color: #eff6ff; }
-
-        /* 調試面板 */
-        .debug-info { font-family: monospace; white-space: pre-wrap; word-wrap: break-word; }
-
-        /* 隱藏元素 */
+        .debug-info { font-family: monospace; white-space: pre-wrap; word-wrap: break-word; max-height: 100px; overflow-y: auto; }
         .hidden { display: none; }
 
-        /* 按鈕樣式 */
-        .filter-btn {
-             background-color: #e5e7eb; /* bg-gray-200 */
-             color: #374151; /* text-gray-700 */
-             font-weight: 600; /* font-semibold */
-             padding: 0.25rem 0.75rem; /* py-1 px-3 */
-             border-radius: 0.375rem; /* rounded-md */
-             font-size: 0.875rem; /* text-sm */
-             transition: background-color 0.15s ease-in-out, color 0.15s ease-in-out;
-             border: 1px solid transparent;
+        /* Button Styles */
+        .filter-btn, .action-btn {
+            font-weight: 600; padding: 0.25rem 0.75rem; border-radius: 0.375rem;
+            font-size: 0.8rem; transition: background-color 0.15s ease-in-out, color 0.15s ease-in-out, border-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out, transform 0.1s ease; /* Added transform */
+            border: 1px solid transparent; white-space: nowrap; line-height: 1.5;
+            box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
         }
-        .filter-btn:hover {
-            background-color: #d1d5db; /* hover:bg-gray-300 */
+        .filter-btn:hover, .action-btn:hover {
+             box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
+             transform: translateY(-1px); /* Slight lift on hover */
         }
-        .filter-btn.active {
-            background-color: #3b82f6; /* bg-blue-500 */
-            color: white;
-            border-color: #2563eb; /* border-blue-600 */
+        .filter-btn:active, .action-btn:active {
+            transform: scale(0.98); /* Click feedback */
+            box-shadow: inset 0 1px 2px rgba(0,0,0,0.1);
         }
-        .filter-btn.active:hover {
-             background-color: #2563eb; /* hover:bg-blue-600 */
-        }
-        .action-btn {
-             font-weight: 600; /* font-semibold */
-             padding: 0.25rem 0.75rem; /* py-1 px-3 */
-             border-radius: 0.375rem; /* rounded-md */
-             font-size: 0.875rem; /* text-sm */
-             transition: background-color 0.15s ease-in-out;
+        .filter-btn { background-color: #e5e7eb; color: #374151; }
+        .filter-btn.active { background-color: #3b82f6; color: white; border-color: #2563eb; }
+        .filter-btn.active:hover { background-color: #2563eb; transform: none; } /* Disable lift on active hover */
+
+        .dept-btn-colored { color: white !important; border-color: rgba(0,0,0,0.1) !important; }
+        .dept-btn-colored:hover { filter: brightness(90%); transform: translateY(-1px); }
+        .dept-btn-colored.active { border-color: rgba(0,0,0,0.3) !important; box-shadow: inset 0 2px 4px rgba(0,0,0,0.2); transform: scale(0.98); }
+        .dept-btn-colored.active:hover { filter: brightness(100%); transform: scale(0.98);} /* Keep active style on hover */
+
+        /* No Data Message Style */
+        #no-data-message {
+            font-style: italic;
+            color: #6b7280; /* gray-500 */
         }
     </style>
     <script>
-      tailwind.config = {
-        theme: {
-          extend: {
-            fontFamily: {
-              sans: ['Inter', 'sans-serif'],
-            },
-          }
-        }
-      }
+      tailwind.config = {}
     </script>
 </head>
 <body class="bg-gray-100 text-gray-800 p-2 md:p-4">
-    <div class="container mx-auto max-w-7xl space-y-4">
-        <header class="bg-gradient-to-r from-blue-500 to-indigo-600 text-white p-4 rounded-lg shadow-md text-center">
-            <h1 class="text-xl md:text-2xl font-bold">屈臣氏效期檢查表處理</h1>
+    <div class="container mx-auto max-w-7xl space-y-3">
+        <header class="bg-gradient-to-r from-blue-500 to-indigo-600 text-white p-3 rounded-lg shadow-md text-center">
+            <h1 class="text-lg md:text-xl font-bold">效期檢查表處理工具 V5.3 (庫存修正、介面微調)</h1>
         </header>
 
         <div id="error-message" class="hidden bg-red-100 border-l-4 border-red-500 text-red-700 p-3 rounded-md shadow" role="alert">
@@ -176,91 +102,99 @@
             <p id="error-text" class="text-sm">錯誤詳情將顯示在這裡</p>
         </div>
 
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div class="card bg-white p-4 rounded-lg shadow-md">
-                <div class="uploader-area border-2 border-dashed border-gray-300 rounded-lg p-4 text-center transition-colors duration-200 h-full flex flex-col justify-center" id="uploader-area">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+             <div class="card bg-white p-3 rounded-lg shadow-md">
+                <div class="uploader-area border-2 border-dashed border-gray-300 rounded-lg p-3 text-center transition-colors duration-200 h-full flex flex-col justify-center" id="uploader-area">
                     <input type="file" id="uploader" accept=".xls,.xlsx,.csv" class="hidden">
-                    <button onclick="document.getElementById('uploader').click()" class="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-md transition duration-150 ease-in-out mb-2 text-sm">
-                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 inline-block mr-1" viewBox="0 0 20 20" fill="currentColor">
-                          <path fill-rule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM6.293 6.707a1 1 0 010-1.414l3-3a1 1 0 011.414 0l3 3a1 1 0 01-1.414 1.414L11 5.414V13a1 1 0 11-2 0V5.414L7.707 6.707a1 1 0 01-1.414 0z" clip-rule="evenodd" />
-                        </svg>
+                    <button onclick="document.getElementById('uploader').click()" class="bg-blue-500 hover:bg-blue-600 text-white font-bold py-1.5 px-3 rounded-md transition duration-150 ease-in-out mb-1.5 text-sm shadow-sm hover:shadow">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 inline-block mr-1 align-[-2px]" viewBox="0 0 20 20" fill="currentColor"> <path fill-rule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM6.293 6.707a1 1 0 010-1.414l3-3a1 1 0 011.414 0l3 3a1 1 0 01-1.414 1.414L11 5.414V13a1 1 0 11-2 0V5.414L7.707 6.707a1 1 0 01-1.414 0z" clip-rule="evenodd" /> </svg>
                         選擇檔案
                     </button>
-                    <p class="text-gray-500 text-xs mb-2">或將檔案拖放至此處</p>
-                    <button id="load-sample" class="bg-yellow-500 hover:bg-yellow-600 text-white font-bold py-1.5 px-3 rounded-md transition duration-150 ease-in-out text-sm">
+                    <p class="text-gray-500 text-xs mb-1.5">或將檔案拖放至此處</p>
+                    <button id="load-sample" class="bg-yellow-500 hover:bg-yellow-600 text-white font-bold py-1 px-2.5 rounded-md transition duration-150 ease-in-out text-sm shadow-sm hover:shadow">
                         載入範例
                     </button>
-                    <div class="file-info mt-3 text-xs text-gray-600" id="file-info"></div>
+                    <div class="file-info mt-2 text-xs text-gray-600" id="file-info"></div>
                 </div>
             </div>
+
             <div id="file-info-display" class="card bg-blue-50 border-l-4 border-blue-400 p-3 rounded-md shadow hidden">
                 <h3 class="text-base font-semibold text-blue-800 mb-1">文件資訊</h3>
                 <div id="file-details" class="text-xs text-blue-700 space-y-0.5"></div>
-                 <details class="mt-2">
+                 <details class="mt-1.5">
                     <summary class="cursor-pointer text-xs font-semibold text-gray-600 hover:text-gray-800">顯示/隱藏處理日誌</summary>
-                    <div id="debug-panel" class="debug-info mt-1 text-xs bg-white p-2 border border-gray-200 rounded max-h-24 overflow-y-auto"></div>
+                    <div id="debug-panel" class="debug-info mt-1 text-xs bg-white p-2 border border-gray-200 rounded"></div>
                  </details>
             </div>
         </div>
 
-        <div id="content-area" class="hidden space-y-4">
-            <div class="card bg-white p-4 rounded-lg shadow-md">
-                <div class="mb-3">
-                     <strong class="font-semibold mr-2 text-gray-700 text-sm">篩選:</strong>
-                     <div id="filter-buttons" class="inline-flex flex-wrap gap-2 mt-1">
-                        </div>
-                </div>
-                 <div class="actions flex flex-wrap gap-3 items-center">
-                     <div class="ml-auto flex gap-3">
+        <div id="content-area" class="hidden space-y-3">
+            <div class="card bg-white p-3 rounded-lg shadow-md">
+                <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between">
+                    <div class="mb-2 sm:mb-0">
+                        <strong class="font-semibold mr-2 text-gray-700 text-sm align-middle">篩選:</strong>
+                        <div id="filter-buttons-container" class="inline-block align-middle"></div>
+                    </div>
+                    <div id="action-buttons-group" class="flex flex-wrap gap-2 sm:ml-auto">
                          <button id="btn-show-marked" class="action-btn bg-emerald-100 hover:bg-emerald-200 text-emerald-700">
-                             <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 inline-block mr-1" viewBox="0 0 20 20" fill="currentColor">
-                               <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" />
-                             </svg>
-                             <span id="marked-btn-text">僅顯示已標記</span>
+                             <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 inline-block mr-1 align-[-2px]" viewBox="0 0 20 20" fill="currentColor"> <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd" /> </svg>
+                             <span id="marked-btn-text">僅顯示標記</span>
                          </button>
                          <button id="btn-reset-mark" class="action-btn bg-red-100 hover:bg-red-200 text-red-700">
-                             <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 inline-block mr-1" viewBox="0 0 20 20" fill="currentColor">
-                               <path fill-rule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 110 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clip-rule="evenodd" />
-                             </svg>
+                             <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 inline-block mr-1 align-[-2px]" viewBox="0 0 20 20" fill="currentColor"> <path fill-rule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 110 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clip-rule="evenodd" /> </svg>
                              重置標記
                          </button>
                      </div>
                  </div>
             </div>
 
-            <div id="table-container" class="bg-white rounded-lg shadow-md overflow-hidden">
-                 <div id="table"></div>
+            <div id="table-container" class="bg-white rounded-lg shadow-md overflow-x-auto">
+                 <table class="data-table">
+                     <thead>
+                         <tr>
+                             <th style="width: 7%;">部</th>
+                             <th style="width: 11%;">貨號</th>
+                             <th style="width: 35%;">品名</th>
+                             <th style="width: 13%;">近效期</th>
+                             <th style="width: 17%;">陳列圖</th>
+                             <th style="width: 10%;">庫存</th>
+                             <th style="width: 7%;">標記</th>
+                         </tr>
+                     </thead>
+                     <tbody id="data-tbody"></tbody>
+                 </table>
+                 <div id="no-data-message" class="p-4 text-center hidden">沒有數據可顯示</div>
             </div>
         </div>
 
         <div id="loading" class="hidden text-center py-10">
-            <svg class="animate-spin h-6 w-6 text-blue-500 mx-auto mb-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-            </svg>
+            <svg class="animate-spin h-6 w-6 text-blue-500 mx-auto mb-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"> <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle> <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path> </svg>
             <p class="text-gray-600 font-semibold text-sm">處理中...</p>
         </div>
     </div>
 
     <script>
-        // --- 全局變量 ---
-        let rawData = [];
-        let processedData = [];
-        let fileMetadata = {};
-        let table = null;
-        let currentFilter = { type: 'all', value: 'all' }; // 追蹤當前篩選狀態 {type: 'all'|'dept'|'category'|'marked', value: string | string[]}
-        let filterBeforeMarked = { type: 'all', value: 'all' }; // 儲存標記篩選前的狀態
+        // --- 全域變數與常數 ---
+        let rawData = [], processedData = [], fileMetadata = {};
+        let currentFilter = { type: 'all', value: 'all' };
+        let filterBeforeMarked = { type: 'all', value: 'all' };
+
         const HEADER_SCAN_ROWS = 20;
-        const HEADER_KEYWORDS = ['部門', '貨號', '品名', '效期', '庫存', '退貨', '日期'];
-        const MIN_KEYWORD_MATCH = 3;
+        const HEADER_KEYWORDS = ['部門', '貨號', '品名', '效期', '庫存', '陳列圖'];
+        const MIN_KEYWORD_MATCH = 2;
+        const CATEGORIES = { "零食區": ["28", "29"], "藥師區": ["02", "03", "04", "05", "07"] };
 
-        // --- 區域代碼定義 ---
-        const CATEGORIES = {
-            "零食區": ["28", "29"],
-            "藥師區": ["02", "03", "04", "05", "07"]
-        };
+        const deptColorPalette = [ { light: 'bg-blue-50', dark: 'bg-blue-100', btn: 'bg-blue-500' }, { light: 'bg-green-50', dark: 'bg-green-100', btn: 'bg-green-500' }, { light: 'bg-purple-50', dark: 'bg-purple-100', btn: 'bg-purple-500' }, { light: 'bg-yellow-50', dark: 'bg-yellow-100', btn: 'bg-yellow-500' }, { light: 'bg-pink-50', dark: 'bg-pink-100', btn: 'bg-pink-500' }, { light: 'bg-indigo-50', dark: 'bg-indigo-100', btn: 'bg-indigo-500' }, { light: 'bg-teal-50', dark: 'bg-teal-100', btn: 'bg-teal-500' }, { light: 'bg-red-50', dark: 'bg-red-100', btn: 'bg-red-500' }, { light: 'bg-gray-50', dark: 'bg-gray-200', btn: 'bg-gray-500' }, { light: 'bg-orange-50', dark: 'bg-orange-100', btn: 'bg-orange-500' }, { light: 'bg-lime-50', dark: 'bg-lime-100', btn: 'bg-lime-500' }, { light: 'bg-cyan-50', dark: 'bg-cyan-100', btn: 'bg-cyan-500' }, ];
+        const deptColorMap = {};
 
-        // --- DOM 元素引用 ---
+        function getDeptColorClasses(dept) {
+            if (!deptColorMap[dept]) {
+                const colorIndex = Object.keys(deptColorMap).length % deptColorPalette.length;
+                deptColorMap[dept] = deptColorPalette[colorIndex];
+            }
+            return deptColorMap[dept];
+        }
+
         const uploaderArea = document.getElementById('uploader-area');
         const uploader = document.getElementById('uploader');
         const fileInfo = document.getElementById('file-info');
@@ -268,681 +202,84 @@
         const fileDetails = document.getElementById('file-details');
         const contentArea = document.getElementById('content-area');
         const loading = document.getElementById('loading');
-        // const btnSortDept = document.getElementById('btn-sort-dept'); // Removed
-        // const btnSortDate = document.getElementById('btn-sort-date'); // Removed
-        // const btnSortName = document.getElementById('btn-sort-name'); // Removed
         const btnShowMarked = document.getElementById('btn-show-marked');
         const markedBtnText = document.getElementById('marked-btn-text');
         const btnResetMark = document.getElementById('btn-reset-mark');
-        const filterButtonsContainer = document.getElementById('filter-buttons'); // Changed ID
+        const filterButtonsParentContainer = document.getElementById('filter-buttons-container');
         const loadSample = document.getElementById('load-sample');
         const errorMessage = document.getElementById('error-message');
         const errorText = document.getElementById('error-text');
         const debugPanel = document.getElementById('debug-panel');
-        // const debugContainer = document.getElementById('debug-container'); // Removed container logic, always show details
+        const tableBody = document.getElementById('data-tbody');
+        const noDataMessage = document.getElementById('no-data-message');
 
-        // --- Tabulator 本地化設定 ---
-        const tabulatorLocale = {
-            "zh-tw": { // 使用繁體中文代碼
-                "pagination": {
-                    "page_size": "每頁顯示",
-                    "page_title": "顯示頁面",
-                    "first": "最前",      // First Page
-                    "first_title": "第一頁", // First Page title
-                    "last": "最後",       // Last Page
-                    "last_title": "最後一頁",  // Last Page title
-                    "prev": "上頁",       // Previous Page
-                    "prev_title": "上一頁",  // Previous Page title
-                    "next": "下頁",       // Next Page
-                    "next_title": "下一頁",  // Next Page title
-                    "all": "全部",        // Show All
-                    "counter": {
-                        "showing": "顯示",
-                        "of": "中的",
-                        "rows": "行",
-                        "pages": "頁"
-                    }
-                },
-                 "headerFilters":{
-                    "default":"篩選...", //default header filter placeholder text
-                }
-            }
-        };
-
-        // --- 核心功能 (大部分與 v2 相同，僅修改部分) ---
-
-        function debug(message) {
-            const timestamp = new Date().toLocaleTimeString('zh-TW', { hour12: false });
-            const msg = `[${timestamp}] ${message}`;
-            console.log(msg);
-            if (debugPanel) {
-                // fileInfoDisplay.classList.remove('hidden'); // 確保文件資訊區可見以顯示日誌
-                debugPanel.textContent += msg + '\n';
-                debugPanel.scrollTop = debugPanel.scrollHeight;
-            }
-        }
-
-        function showError(message, error) {
-            errorText.textContent = message;
-            errorMessage.classList.remove('hidden');
-            loading.classList.add('hidden');
-            debug(`錯誤: ${message}`);
-            if (error) {
-                debug(`詳細錯誤: ${error.stack || error}`);
-            }
-            if (table) {
-                table.destroy();
-                table = null;
-            }
-            contentArea.classList.add('hidden');
-        }
-
-        function hideError() {
-            errorMessage.classList.add('hidden');
-        }
-
+        function debug(message) { console.log(`[DEBUG] ${message}`); if (debugPanel) { const ts = new Date().toLocaleTimeString(); debugPanel.innerHTML += `[${ts}] ${message}\n`; debugPanel.scrollTop = debugPanel.scrollHeight; } }
+        function showError(message, error) { console.error(`[ERROR] ${message}`, error); errorText.textContent = message + (error ? ` (${error.name}: ${error.message})` : ''); errorMessage.classList.remove('hidden'); loading.classList.add('hidden'); contentArea.classList.add('hidden'); }
+        function hideError() { errorMessage.classList.add('hidden'); }
         function parseDate(dateInput) {
-             if (!dateInput) return null;
-            let date;
-            if (dateInput instanceof Date) {
-                date = dateInput;
-            } else if (typeof dateInput === 'number' && dateInput > 0) { // Excel 日期數字
-                 try {
-                    // 檢查是否為有效的 Excel 日期數字 (大致範圍)
-                    if (dateInput > 20000 && dateInput < 60000) {
-                         // 使用 XLSX 內建的日期轉換函數，更可靠
-                         date = XLSX.SSF.parse_date_code(dateInput);
-                         // 返回 YYYY/MM/DD 格式
-                         if (date) {
-                            return `${date.y}/${String(date.m).padStart(2, '0')}/${String(date.d).padStart(2, '0')}`;
-                         }
-                    }
-                     // 如果不是有效範圍或轉換失敗，嘗試按字符串處理
-                     date = new Date(String(dateInput));
-
-                 } catch (e) {
-                     debug(`Excel 日期數字轉換失敗: ${dateInput}, 錯誤: ${e.message}`);
-                     return null;
-                 }
-            } else if (typeof dateInput === 'string') {
-                const dateStr = dateInput.split(' ')[0].replace(/-/g, '/'); // 統一分隔符
-                let match = dateStr.match(/^(\d{4})\/(\d{1,2})\/(\d{1,2})$/);
-                if (match) {
-                    date = new Date(parseInt(match[1]), parseInt(match[2]) - 1, parseInt(match[3]));
-                } else {
-                    date = new Date(dateStr); // 嘗試通用解析
-                }
-            } else {
-                return null;
+            if (!dateInput) return null; let date;
+            if (dateInput instanceof Date) { date = dateInput; }
+            else if (typeof dateInput === 'number') { if (dateInput > 0 && dateInput < 60) { dateInput++; } date = new Date(Math.round((dateInput - 25569) * 86400 * 1000)); }
+            else if (typeof dateInput === 'string') {
+                const str = dateInput.trim().replace(/\./g, '/');
+                if (/^\d{4}[\/-]\d{1,2}[\/-]\d{1,2}$/.test(str)) { date = new Date(str.replace(/-/g, '/')); }
+                else if (/^\d{1,2}[\/-]\d{1,2}[\/-]\d{4}$/.test(str)) { const p = str.split(/[/-]/); date = new Date(p[2], p[0] - 1, p[1]); }
+                else if (/^\d{2,3}[\/-]\d{1,2}[\/-]\d{1,2}$/.test(str)) { const p = str.split(/[/-]/).map(Number); if (p[0] < 200) date = new Date(p[0] + 1911, p[1] - 1, p[2]); }
             }
-
-            if (date && !isNaN(date.getTime())) {
-                const year = date.getFullYear();
-                if (year < 1980 || year > 2100) return null;
-                const month = (date.getMonth() + 1).toString().padStart(2, '0');
-                const day = date.getDate().toString().padStart(2, '0');
-                return `${year}/${month}/${day}`;
-            }
+            if (date && !isNaN(date.getTime())) { return `${date.getFullYear()}/${(date.getMonth() + 1).toString().padStart(2, '0')}/${date.getDate().toString().padStart(2, '0')}`; }
             return null;
         }
-
-
         function handleFile(file) {
-            hideError();
-            // debugContainer.classList.add('hidden'); // 不再隱藏
-            debugPanel.textContent = '';
+            hideError(); debugPanel.textContent = ''; debug(`開始處理檔案: ${file.name}`);
+            loading.classList.remove('hidden'); contentArea.classList.add('hidden'); tableBody.innerHTML = ''; noDataMessage.classList.add('hidden');
             fileInfo.textContent = `檔案：${file.name}`;
-            loading.classList.remove('hidden');
-            contentArea.classList.add('hidden');
-            fileInfoDisplay.classList.add('hidden');
-
             const reader = new FileReader();
-            reader.onload = function(e) {
-                try {
-                    const data = new Uint8Array(e.target.result);
-                    processExcelData(data);
-                } catch (error) {
-                    showError("文件處理時發生意外錯誤", error);
-                }
-            };
-            reader.onerror = function(e) {
-                showError("讀取文件時發生錯誤", e.target.error);
-            };
+            reader.onload = e => { try { const data = new Uint8Array(e.target.result); const workbook = XLSX.read(data, {type: 'array', cellDates: true}); processExcelData(workbook); } catch (err) { showError(`讀取或解析 Excel 檔案 '${file.name}' 失敗`, err); }};
+            reader.onerror = err => showError(`檔案 '${file.name}' 讀取錯誤`, err);
             reader.readAsArrayBuffer(file);
         }
-
-        function processExcelData(data) {
-             try {
-                debug("開始解析 Excel 文件...");
-                const workbook = XLSX.read(data, { type: 'array', cellDates: true, cellNF: false, cellStyles: true });
-
-                debug(`工作表數量: ${workbook.SheetNames.length}`);
-                if (workbook.SheetNames.length === 0) throw new Error("Excel 文件不包含任何工作表");
-
-                const firstSheetName = workbook.SheetNames[0];
-                debug(`處理第一個工作表: ${firstSheetName}`);
-                const worksheet = workbook.Sheets[firstSheetName];
-
-                // --- 提取文件元數據 ---
-                try {
-                    const titleCell = worksheet['C1'] ? worksheet['C1'].v : "未定義";
-                    const weekCell = worksheet['B2'] ? worksheet['B2'].v : "未定義";
-                    const timeCell = worksheet['F2'] ? worksheet['F2'].v : "未定義";
-                    fileMetadata = {
-                        title: String(titleCell).trim(),
-                        week: String(weekCell).trim(),
-                        time: String(timeCell).trim()
-                    };
-                    debug(`文件標題: ${fileMetadata.title}`);
-                    debug(`週別: ${fileMetadata.week}`);
-                    debug(`製表時間: ${fileMetadata.time}`);
-                    fileDetails.innerHTML = `
-                        <p><strong>標題：</strong>${fileMetadata.title || '無法讀取'}</p>
-                        <p><strong>${fileMetadata.week || '無法讀取週別'}</strong></p>
-                        <p><strong>${fileMetadata.time || '無法讀取時間'}</strong></p>
-                    `;
-                    fileInfoDisplay.classList.remove('hidden');
-                } catch (e) {
-                    debug(`提取文件元數據時發生錯誤: ${e.message}。`);
-                    fileMetadata = { title: '讀取失敗', week: '讀取失敗', time: '讀取失敗' };
-                    fileDetails.innerHTML = `<p>無法完整讀取文件頂部資訊。</p>`;
-                    fileInfoDisplay.classList.remove('hidden');
-                }
-
-                const sheetData = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: '', blankrows: false });
-                if (sheetData.length === 0) throw new Error("工作表不包含任何數據");
-                debug(`讀取到 ${sheetData.length} 行原始數據`);
-
-                // --- 偵測標題行 ---
-                let headerRowIndex = -1;
-                let headers = [];
-                if (sheetData.length > 4 && isLikelyHeader(sheetData[4])) {
-                     headerRowIndex = 4;
-                     debug("在第 5 行找到標題行");
-                } else {
-                    debug(`未在第 5 行找到標題，掃描前 ${HEADER_SCAN_ROWS} 行...`);
-                    for (let i = 0; i < Math.min(HEADER_SCAN_ROWS, sheetData.length); i++) {
-                        if (isLikelyHeader(sheetData[i])) {
-                            headerRowIndex = i;
-                            debug(`在第 ${i + 1} 行找到標題行`);
-                            break;
-                        }
-                    }
-                }
-                 if (headerRowIndex === -1) {
-                     debug("警告：無法自動偵測到標題行。嘗試使用第 5 行。");
-                     if (sheetData.length > 4) headerRowIndex = 4;
-                     else if (sheetData.length > 0) { headerRowIndex = 0; debug("警告：第 5 行不存在，使用第 1 行。"); }
-                     else throw new Error("無法找到任何有效的標題行或數據行");
-                 }
-                headers = sheetData[headerRowIndex].map(h => String(h || '').trim());
-                debug(`使用的標題行 (第 ${headerRowIndex + 1} 行): ${headers.join(', ')}`);
-
-                const dataRows = sheetData.slice(headerRowIndex + 1).filter(row => row && row.some(cell => cell !== null && cell !== undefined && cell !== ''));
-                debug(`找到 ${dataRows.length} 行潛在數據行`);
-                if (dataRows.length === 0) throw new Error("未在標題行後找到任何數據行");
-
-                rawData = dataRows.map(row => {
-                    const rowObject = {};
-                    headers.forEach((header, index) => { if (header) rowObject[header] = row[index] ?? ''; });
-                    return rowObject;
-                });
-
-                processAndNormalizeData();
-
-            } catch (error) {
-                showError("處理 Excel 文件時發生錯誤", error);
+        function processExcelData(workbook) {
+            const firstSheetName = workbook.SheetNames[0]; const worksheet = workbook.Sheets[firstSheetName];
+            if (!worksheet) { showError("工作表未找到。"); return; }
+            debug(`成功讀取工作表: ${firstSheetName}`); let jsonData = []; let headerRowIndex = 0; let maxMatches = 0;
+            const allRowsAsArrays = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: "", rawNumbers: false });
+            for (let i = 0; i < Math.min(HEADER_SCAN_ROWS, allRowsAsArrays.length); i++) {
+                const currentRow = allRowsAsArrays[i]; if (!Array.isArray(currentRow)) continue; let currentMatches = 0;
+                HEADER_KEYWORDS.forEach(kw => { if (currentRow.some(cell => cell && String(cell).trim().includes(kw))) currentMatches++; });
+                if (currentMatches > maxMatches) { maxMatches = currentMatches; headerRowIndex = i; }
             }
-        }
-
-        function isLikelyHeader(row) {
-            if (!Array.isArray(row) || row.length === 0) return false;
-            let matchCount = 0;
-            const rowString = row.join(' ').toLowerCase();
-            for (const keyword of HEADER_KEYWORDS) {
-                if (rowString.includes(keyword.toLowerCase())) matchCount++;
+            if (maxMatches >= MIN_KEYWORD_MATCH) {
+                debug(`自動偵測到表頭在第 ${headerRowIndex + 1} 行`); const headerNames = allRowsAsArrays[headerRowIndex].map((h, idx) => h ? String(h).trim() : `UNKNOWN_${idx}`);
+                jsonData = XLSX.utils.sheet_to_json(worksheet, { defval: "", header: headerNames, range: headerRowIndex + 1 }); debug(`使用偵測到的表頭轉換了 ${jsonData.length} 行。`);
+            } else {
+                debug("未偵測到明確表頭，用第一行。"); jsonData = XLSX.utils.sheet_to_json(worksheet, { defval: "", rawNumbers: false }); if (jsonData.length > 0) debug(`使用預設表頭轉換了 ${jsonData.length} 行。`);
             }
-            return matchCount >= MIN_KEYWORD_MATCH;
+            rawData = jsonData; debug(`原始數據行數: ${rawData.length}`);
+            fileMetadata = { title: firstSheetName, week: "未知", time: `處理時間：${new Date().toLocaleTimeString('zh-TW')}` };
+            if (headerRowIndex > 0) { for (let i = 0; i < headerRowIndex; i++) { const rs = allRowsAsArrays[i].join(" "); if (rs.includes("週別")) { fileMetadata.week = rs; break; } } }
+            fileDetails.innerHTML = `<p><strong>標題：</strong>${fileMetadata.title}</p><p><strong>${fileMetadata.week}</strong></p><p><strong>${fileMetadata.time}</strong></p>`;
+            fileInfoDisplay.classList.remove('hidden');
+            if (rawData.length > 0) { processAndNormalizeData(); } else { showError("檔案中無數據。"); }
         }
-
+        function parseDisplayCodeForSort(code) {
+            if (!code || typeof code !== 'string' || code.length < 13) { return { prefix: code || '', letter: '', layer: Infinity, position: Infinity }; }
+            try {
+                const prefix = code.substring(0, 7); const letter = code.substring(7, 8).toUpperCase();
+                const layer = parseInt(code.substring(8, 10), 10); const position = parseInt(code.substring(10, 13), 10);
+                if (isNaN(layer) || isNaN(position)) { return { prefix: prefix, letter: letter, layer: Infinity, position: Infinity }; }
+                return { prefix, letter, layer, position };
+            } catch (e) { return { prefix: code, letter: '', layer: Infinity, position: Infinity }; }
+        }
         function processAndNormalizeData() {
             try {
                 if (!rawData || rawData.length === 0) throw new Error("沒有可供處理的原始數據");
-                debug(`開始標準化 ${rawData.length} 行原始數據...`);
-                let processedCount = 0, errorCount = 0;
-
+                debug(`開始標準化 ${rawData.length} 行...`); let processedCount = 0;
                 processedData = rawData.map((row, index) => {
-                    try {
-                        const normalized = normalizeRow(row, index);
-                        if (normalized && normalized.dept && normalized.name) {
-                             processedCount++;
-                             return normalized;
-                        } else {
-                             // debug(`第 ${index + 1} 行數據缺少部門或品名，已跳過`);
-                             return null;
-                        }
-                    } catch (error) {
-                        errorCount++;
-                        debug(`處理第 ${index + 1} 行數據時出錯: ${error.message}.`);
-                        return null;
-                    }
+                    const normalized = normalizeRow(row, index);
+                    if (normalized?.dept && normalized?.name) { processedCount++; return normalized; } return null;
                 }).filter(row => row !== null);
-
-                debug(`標準化完成。有效數據行: ${processedCount}，處理錯誤行: ${errorCount}，跳過行: ${rawData.length - processedCount - errorCount}`);
-                if (processedData.length === 0) throw new Error("數據標準化後沒有有效的數據行。請檢查文件內容和標題行。");
-
-                updateUI();
-                loading.classList.add('hidden');
-                contentArea.classList.remove('hidden');
-                debug("數據處理和 UI 更新完成。");
-            } catch (error) {
-                showError("數據處理過程中發生錯誤", error);
-            }
-        }
-
-        function normalizeRow(row, rowIndex) {
-            // 欄位映射 (與 v2 相同)
-             const fieldMap = {
-                dept: ['部門', '部門別', '門市部門', '部門代號', '部門名稱'],
-                sku: ['貨號', '商品編號', '品號', '商品貨號'],
-                name: ['品名', '商品名稱', '商品名', '名稱'],
-                nearDate: [/WK\d+.*最近效期/i, '最近效期日', '最近效期', '最短效期', '近效期'],
-                farDate: [/WK\d+.*最遠效期/i, '最遠效期日', '最遠效期', '最長效期', '遠效期'],
-                stock: ['庫存量', '庫存', '數量', '庫存數量', '現有數量'],
-                displayCode: ['陳列圖', '陳列圖號', '陳列位置', '陳列編號', '陳列代碼'],
-                returnType: ['退貨型態', '退貨類型', '退貨方式', '退貨狀態'],
-                sixMonthYn: [/WK\d+.*六個月/i, '六個月內', '6M內', '六個月內效期品', '是否.*六個月'],
-                registeredYn: [/WK\d+.*是否已經/i, /已用盤點機/i, '已.*登記', '登記', '已登記']
-            };
-
-            const normalizedRow = {
-                id: rowIndex, dept: '', sku: '', name: '', nearDate: null, farDate: null,
-                stock: 0, displayCode: '', returnType: '', sixMonthYn: 'N', registeredYn: 'N',
-                marked: 'N', daysToExpiry: null, expiryStatus: null
-            };
-            const rowKeys = Object.keys(row);
-
-            for (const standardField in fieldMap) {
-                const aliases = fieldMap[standardField];
-                let foundValue = undefined, matchedKey = '';
-                for (const alias of aliases) {
-                    let currentMatchKey = null;
-                    if (alias instanceof RegExp) {
-                        currentMatchKey = rowKeys.find(key => alias.test(key.trim()));
-                    } else {
-                        const lowerAlias = String(alias).toLowerCase().trim();
-                        currentMatchKey = rowKeys.find(key => String(key).toLowerCase().trim() === lowerAlias);
-                        if (!currentMatchKey) currentMatchKey = rowKeys.find(key => String(key).toLowerCase().trim().includes(lowerAlias));
-                    }
-                    if (currentMatchKey) {
-                        foundValue = row[currentMatchKey];
-                        matchedKey = currentMatchKey;
-                        break;
-                    }
-                }
-                // if (rowIndex < 1) debug(`  行 ${rowIndex+1} - 欄位匹配(${standardField}): ${matchedKey || '未找到'} => ${foundValue !== undefined ? JSON.stringify(foundValue) : 'N/A'}`);
-
-                if (foundValue !== undefined && foundValue !== null && foundValue !== '') {
-                    let value = foundValue;
-                    if (standardField === 'nearDate' || standardField === 'farDate') value = parseDate(value);
-                    else if (standardField === 'stock') value = parseInt(String(value).replace(/[^\d.-]/g, '')) || 0;
-                    else if (standardField === 'sixMonthYn' || standardField === 'registeredYn') {
-                        const upperValue = String(value).toUpperCase();
-                        value = (upperValue.includes('Y') || upperValue.includes('是')) ? 'Y' : 'N';
-                    }
-                    else value = String(value).trim();
-                    normalizedRow[standardField] = value;
-                }
-            }
-
-            if (normalizedRow.dept) normalizedRow.dept = String(normalizedRow.dept).padStart(2, '0');
-            if (normalizedRow.name) normalizedRow.name = normalizedRow.name.replace(/\s+/g, ' ');
-
-            if (normalizedRow.nearDate) {
-                try {
-                    const [year, month, day] = normalizedRow.nearDate.split('/').map(Number);
-                    const expiryDate = new Date(year, month - 1, day);
-                    const today = new Date(); today.setHours(0, 0, 0, 0);
-                    if (!isNaN(expiryDate.getTime())) {
-                        const diffTime = expiryDate - today;
-                        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-                        normalizedRow.daysToExpiry = diffDays;
-                        if (diffDays <= 30) normalizedRow.expiryStatus = 'danger';
-                        else if (diffDays <= 90) normalizedRow.expiryStatus = 'warning';
-                        if (diffDays <= 180) normalizedRow.sixMonthYn = 'Y';
-                    }
-                } catch (error) {
-                    // debug(`行 ${rowIndex+1} - 計算到期天數時出錯 (${normalizedRow.nearDate}): ${error.message}`);
-                }
-            }
-
-            if (!normalizedRow.dept || !normalizedRow.name) return null;
-            return normalizedRow;
-        }
-
-        function updateUI() {
-            if (!processedData || processedData.length === 0) {
-                debug("沒有處理好的數據可供顯示。");
-                return;
-            }
-            createTable();
-            createFilterButtons(); // Changed function name
-            setupButtonEvents();
-        }
-
-        function createTable() {
-            if (table) {
-                table.destroy();
-                table = null;
-                debug("舊表格已銷毀。");
-            }
-
-            // --- 簡化後的列標題 ---
-            const shortColTitles = {
-                marked: "標", dept: "部", sku: "貨號", name: "品名", nearDate: "近效",
-                daysToExpiry: "天", farDate: "遠效", stock: "存", displayCode: "陳列",
-                returnType: "退貨", sixMonthYn: "6M內", registeredYn: "登記"
-            };
-
-            const tableColumns = [
-                { title: shortColTitles.marked, field: "marked", width: 50, headerSort: false, hozAlign: "center", formatter: cell => `<span class="${cell.getValue() === 'Y' ? 'mark-yes' : 'mark-no'}" data-id="${cell.getRow().getData().id}">${cell.getValue()}</span>`, cellClick: toggleMarkedStatus },
-                { title: shortColTitles.dept, field: "dept", width: 55, hozAlign: "center" }, // 稍寬一點
-                { title: shortColTitles.sku, field: "sku", width: 90 }, // 稍寬一點
-                { title: shortColTitles.name, field: "name", minWidth: 150, tooltip: true, formatter: "plaintext" }, // 允許換行並使用純文本
-                { title: shortColTitles.nearDate, field: "nearDate", width: 95, sorter: "date", sorterParams: { format: "yyyy/MM/dd" }, formatter: expiryDateFormatter },
-                { title: shortColTitles.daysToExpiry, field: "daysToExpiry", width: 60, hozAlign: "right", sorter: "number", formatter: expiryDaysFormatter },
-                // { title: shortColTitles.farDate, field: "farDate", width: 95, sorter: "date", sorterParams: { format: "yyyy/MM/dd" }, formatter: cell => cell.getValue() || '--' }, // 隱藏遠效期
-                { title: shortColTitles.stock, field: "stock", width: 55, hozAlign: "right", sorter: "number" }, // 稍寬一點
-                // { title: shortColTitles.displayCode, field: "displayCode", width: 100, tooltip: true }, // 隱藏陳列
-                // { title: shortColTitles.returnType, field: "returnType", width: 90, tooltip: true }, // 隱藏退貨
-                { title: shortColTitles.sixMonthYn, field: "sixMonthYn", width: 60, hozAlign: "center", formatter: yesNoFormatter }, // 縮短
-                { title: shortColTitles.registeredYn, field: "registeredYn", width: 60, hozAlign: "center", formatter: yesNoFormatter } // 縮短
-            ];
-
-            // --- 表格格式化函數 ---
-            function expiryDateFormatter(cell) {
-                const value = cell.getValue();
-                const status = cell.getRow().getData().expiryStatus;
-                if (status === 'danger') return `<span class="expiry-danger">${value || '--'}</span>`;
-                if (status === 'warning') return `<span class="expiry-warning">${value || '--'}</span>`;
-                return value || '--';
-            }
-            function expiryDaysFormatter(cell) {
-                const value = cell.getValue();
-                const status = cell.getRow().getData().expiryStatus;
-                if (value === null || value === undefined) return '--';
-                if (status === 'danger') return `<span class="expiry-danger">${value}</span>`;
-                if (status === 'warning') return `<span class="expiry-warning">${value}</span>`;
-                return value;
-            }
-            function yesNoFormatter(cell) {
-                const value = cell.getValue();
-                if (value === 'Y') return '<span class="font-semibold text-emerald-600">是</span>';
-                if (value === 'N') return '<span class="text-gray-500">否</span>';
-                return '--';
-            }
-            function toggleMarkedStatus(e, cell) {
-                const row = cell.getRow();
-                const data = row.getData();
-                data.marked = data.marked === 'Y' ? 'N' : 'Y';
-                row.update(data);
-                // 如果當前在 "僅顯示已標記" 模式下取消標記，需要從表格中移除該行
-                if (currentFilter.type === 'marked' && data.marked === 'N') {
-                     row.delete(); // 從視圖中刪除，不會影響原始 processedData
-                     debug(`從標記篩選視圖中移除 ID ${data.id}`);
-                } else {
-                    debug(`標記切換: ID ${data.id}, 新狀態: ${data.marked}`);
-                }
-            }
-
-
-            try {
-                debug("開始初始化 Tabulator 表格...");
-                table = new Tabulator("#table", {
-                    // height: "70vh", // 增加高度以適應手機
-                    layout: "fitDataFill", // 列寬適應內容，最後一列填充
-                    // layout: "fitColumns", // 可能導致小屏幕擠壓
-                    responsiveLayout: "collapse",
-                    data: processedData,
-                    columns: tableColumns,
-                    langs: tabulatorLocale, // 應用本地化
-                    locale: "zh-tw",       // 設置當前語言
-                    groupBy: "dept",
-                    groupHeader: (value, count) => `<span class="font-bold">${value || '?'}</span> <span class="text-sm font-normal text-indigo-600">(${count})</span>`,
-                    initialSort: [ { column: "daysToExpiry", dir: "asc" } ], // 優先按天數排序
-                    placeholder: "沒有數據可顯示",
-                    pagination: "local",
-                    paginationSize: 50, // 預設每頁數量
-                    paginationSizeSelector: [25, 50, 100, true], // 可選大小
-                    paginationCounter: "rows",
-                });
-                // 動態調整高度以填充屏幕
-                adjustTableHeight();
-                window.addEventListener('resize', adjustTableHeight); // 窗口大小改變時重新調整
-                 debug("Tabulator 表格初始化成功。");
-            } catch (error) {
-                 showError("創建表格時發生錯誤", error);
-            }
-        }
-
-        /** 動態調整表格高度 */
-        function adjustTableHeight() {
-            if (!table || !contentArea.offsetParent) return; // 如果表格不存在或內容區域不可見，則不調整
-            const container = document.getElementById('table-container');
-            const otherElementsHeight = document.querySelector('header').offsetHeight +
-                                     document.querySelector('.grid').offsetHeight + // 上傳和文件資訊區
-                                     document.querySelector('.card').offsetHeight + // 篩選/操作按鈕區
-                                     (document.querySelector('.tabulator-footer')?.offsetHeight || 50) + // 分頁器高度估計
-                                     60; // 其他邊距和間隔估計值 (px)
-            const availableHeight = window.innerHeight - otherElementsHeight;
-            const tableHeight = Math.max(200, availableHeight); // 最小高度 200px
-            // console.log("Calculated Table Height:", tableHeight);
-            container.style.height = `${tableHeight}px`;
-            if (table) {
-                table.setHeight(tableHeight); // 確保 Tabulator 內部也更新高度
-            }
-        }
-
-
-        /** 創建篩選按鈕 (包括區域和部門) */
-        function createFilterButtons() {
-            try {
-                const depts = [...new Set(processedData.map(item => item.dept))]
-                                .filter(dept => dept)
-                                .sort();
-                debug(`找到 ${depts.length} 個有效部門`);
-
-                let buttonsHtml = `<button class="filter-btn active" data-filter-type="all" data-filter-value="all">全部 (${processedData.length})</button>`;
-
-                // 添加區域按鈕
-                for (const categoryName in CATEGORIES) {
-                    const categoryDepts = CATEGORIES[categoryName];
-                    const count = processedData.filter(item => categoryDepts.includes(item.dept)).length;
-                    if (count > 0) { // 只顯示有數據的區域
-                       buttonsHtml += `<button class="filter-btn" data-filter-type="category" data-filter-value="${categoryName}">${categoryName} (${count})</button>`;
-                    }
-                }
-
-                // 添加獨立部門按鈕 (如果需要)
-                // depts.forEach(dept => {
-                //     const count = processedData.filter(item => item.dept === dept).length;
-                //     buttonsHtml += `<button class="filter-btn" data-filter-type="dept" data-filter-value="${dept}">${dept} (${count})</button>`;
-                // });
-
-                filterButtonsContainer.innerHTML = buttonsHtml;
-
-                // 事件委派
-                filterButtonsContainer.addEventListener('click', handleFilterClick);
-
-            } catch (error) {
-                debug(`創建篩選按鈕時出錯: ${error.message}`);
-            }
-        }
-
-        /** 處理篩選按鈕點擊事件 */
-        function handleFilterClick(event) {
-             if (event.target.classList.contains('filter-btn')) {
-                const button = event.target;
-                const filterType = button.getAttribute('data-filter-type');
-                const filterValue = button.getAttribute('data-filter-value');
-
-                applyFilter(filterType, filterValue);
-
-                // 更新按鈕激活狀態
-                updateActiveButton(button);
-            }
-        }
-
-         /** 應用篩選邏輯 */
-        function applyFilter(type, value) {
-             if (!table) return;
-             debug(`應用篩選: 類型=${type}, 值=${value}`);
-             currentFilter = { type, value }; // 更新當前篩選狀態
-
-             // 清除標記按鈕的激活狀態
-             btnShowMarked.classList.remove('active', 'bg-emerald-500', 'text-white');
-             btnShowMarked.classList.add('bg-emerald-100', 'hover:bg-emerald-200', 'text-emerald-700');
-             markedBtnText.textContent = "僅顯示已標記";
-
-
-             table.clearFilter(); // 清除舊篩選
-
-             if (type === 'all') {
-                 // 不做任何篩選
-             } else if (type === 'dept') {
-                 table.setFilter("dept", "=", value);
-             } else if (type === 'category') {
-                 const categoryDepts = CATEGORIES[value];
-                 if (categoryDepts) {
-                     table.setFilter("dept", "in", categoryDepts);
-                 }
-             } else if (type === 'marked') {
-                 table.setFilter("marked", "=", "Y");
-             }
-             table.redraw(true); // 強制重繪表格以應用篩選
-        }
-
-        /** 更新按鈕激活狀態 */
-        function updateActiveButton(activeButton) {
-            filterButtonsContainer.querySelectorAll('.filter-btn').forEach(btn => {
-                btn.classList.remove('active');
-            });
-            if (activeButton) {
-                activeButton.classList.add('active');
-            }
-        }
-
-
-        /** 為頂部操作按鈕設置事件監聽器 */
-        function setupButtonEvents() {
-            // 標記篩選按鈕 (切換邏輯)
-            btnShowMarked.addEventListener('click', () => {
-                if (!table) return;
-
-                if (currentFilter.type === 'marked') {
-                    // --- 取消標記篩選，恢復之前的狀態 ---
-                    debug("取消標記篩選，恢復到: " + JSON.stringify(filterBeforeMarked));
-                    applyFilter(filterBeforeMarked.type, filterBeforeMarked.value);
-                    // 恢復對應的篩選按鈕激活狀態
-                    const previousButton = filterButtonsContainer.querySelector(`[data-filter-type="${filterBeforeMarked.type}"][data-filter-value="${filterBeforeMarked.value}"]`);
-                    updateActiveButton(previousButton);
-
-                } else {
-                    // --- 應用標記篩選 ---
-                    // 保存當前篩選狀態
-                    filterBeforeMarked = { ...currentFilter };
-                    debug("應用標記篩選，之前狀態: " + JSON.stringify(filterBeforeMarked));
-                    applyFilter('marked', 'Y');
-                    // 更新按鈕視覺狀態和文字
-                    btnShowMarked.classList.add('active', 'bg-emerald-500', 'text-white');
-                     btnShowMarked.classList.remove('bg-emerald-100', 'hover:bg-emerald-200', 'text-emerald-700');
-                    markedBtnText.textContent = "顯示全部";
-                    // 取消其他篩選按鈕的激活狀態
-                    updateActiveButton(null);
-                }
-            });
-
-
-            // 重置標記按鈕
-            btnResetMark.addEventListener('click', () => {
-                if (!table || !processedData) return;
-                if (confirm("確定要清除所有標記嗎？此操作無法撤銷。")) {
-                    debug("開始重置標記...");
-                    let changed = false;
-                    processedData.forEach(item => {
-                        if (item.marked === 'Y') {
-                            item.marked = 'N';
-                            changed = true;
-                        }
-                    });
-
-                    if (changed) {
-                        // 如果有標記被更改，則更新表格數據
-                        table.setData(processedData)
-                             .then(() => {
-                                 // 重置後，恢復到 "全部" 篩選狀態
-                                 applyFilter('all', 'all');
-                                 updateActiveButton(filterButtonsContainer.querySelector('[data-filter-type="all"]'));
-                                 debug("所有標記已重置，篩選已恢復為'全部'。");
-                             })
-                             .catch(err => {
-                                 showError("重置標記時更新表格數據出錯", err);
-                             });
-                    } else {
-                         debug("沒有需要重置的標記。");
-                         // 即使沒有標記更改，也確保篩選恢復到'全部'
-                         applyFilter('all', 'all');
-                         updateActiveButton(filterButtonsContainer.querySelector('[data-filter-type="all"]'));
-                    }
-                }
-            });
-        }
-
-        // --- 事件監聽器 ---
-        uploader.addEventListener('change', e => {
-            const file = e.target.files[0];
-            if (file) handleFile(file);
-            uploader.value = '';
-        });
-        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
-            uploaderArea.addEventListener(eventName, preventDefaults, false);
-            document.body.addEventListener(eventName, preventDefaults, false);
-        });
-        function preventDefaults(e) { e.preventDefault(); e.stopPropagation(); }
-        ['dragenter', 'dragover'].forEach(eventName => uploaderArea.addEventListener(eventName, () => uploaderArea.classList.add('highlight'), false));
-        ['dragleave', 'drop'].forEach(eventName => uploaderArea.addEventListener(eventName, () => uploaderArea.classList.remove('highlight'), false));
-        uploaderArea.addEventListener('drop', e => { if (e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]); }, false);
-
-        // 加載範例數據事件
-        loadSample.addEventListener('click', function() {
-            hideError();
-            debugPanel.textContent = '';
-            debug("開始載入範例數據...");
-            loading.classList.remove('hidden');
-            contentArea.classList.add('hidden');
-
-            fileMetadata = { title: "範例效期補查", week: "週別：範例", time: `載入時間：${new Date().toLocaleTimeString('zh-TW')}` };
-            fileDetails.innerHTML = `<p><strong>標題：</strong>${fileMetadata.title}</p><p><strong>${fileMetadata.week}</strong></p><p><strong>${fileMetadata.time}</strong></p>`;
-            fileInfoDisplay.classList.remove('hidden');
-            fileInfo.textContent = '檔案：範例數據.xlsx';
-
-             rawData = [
-                 {"部門": "28", "貨號": "135543", "品名": "比菲多軟糖-葡萄", "近效": "2024/12/26", "遠效": "2025/05/31", "庫存": 3, "陳列": "28A02", "退貨": "RR", "6M": "Y", "登記": "N"},
-                 {"部門": "29", "貨號": "146344", "品名": "77脆可穀麥巧克力", "近效": "2024/12/26", "遠效": "2025/06/30", "庫存": 32, "陳列": "28A04", "退貨": "NN", "6M": "Y", "登記": "N"},
-                 {"部門": "05", "貨號": "177493", "品名": "活沛多 OPC活妍葡萄籽膠囊 60粒", "近效": "2025/01/15", "遠效": "2025/02/07", "庫存": 3, "陳列": "04E03", "退貨": "NN", "6M": "Y", "登記": "N"}, // 近效期
-                 {"部門": "04", "貨號": "177498", "品名": "活沛多 蜂王乳芝麻美E錠 60錠", "近效": "2025/08/15", "遠效": "2025/11/07", "庫存": 5, "陳列": "04G02", "退貨": "NN", "6M": "N", "登記": "Y"},
-                 {"部門": "03", "貨號": "208625", "品名": "活沛多 啾咪QQ膠原軟糖-葡萄", "近效": "2025/09/01", "遠效": "2025/12/01", "庫存": 10, "陳列": "04E03", "退貨": "NN", "6M": "N", "登記": "N"},
-                 {"部門": "02", "貨號": "999999", "品名": "測試藥品A", "近效": "2025/07/20", "遠效": "2025/10/20", "庫存": 8, "陳列": "02A01", "退貨": "RR", "6M": "N", "登記": "Y"},
-                 {"部門": "07", "貨號": "888888", "品名": "測試藥品B", "近效": "2025/02/28", "遠效": "2025/05/28", "庫存": 15, "陳列": "07B03", "退貨": "RN", "6M": "Y", "登記": "N"}, // 近效期
-                 {"部門": "05", "貨號": "777777", "品名": "日期錯誤測試", "近效": "無效日期", "遠效": null, "庫存": 3, "陳列": "TEST3", "退貨": "NN", "6M": "N", "登記": "N"},
-                 {"部門": "28", "貨號": "111111", "品名": "另一個零食", "近效": "2025/10/10", "遠效": "2026/01/10", "庫存": 20, "陳列": "28B05", "退貨": "RR", "6M": "N", "登記": "N"},
-             ];
-            setTimeout(() => { processAndNormalizeData(); }, 300);
-        });
-
-        // --- 初始化 ---
-        debug("屈臣氏效期檢查表處理工具 (優化版 v3) 初始化完成。");
-
-    </script>
-</body>
-</html>
+                debug(`標準化完成。有效: ${processedCount}, 過濾: ${rawData.length - processedCount}`);
+                if (processedCount === 0) throw new Error("數據標準化後無有效行。");
+                debug("開始自動排序...");
+                processedData.sort((a, b) => {
+                
